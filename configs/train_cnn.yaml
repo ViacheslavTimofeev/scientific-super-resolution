@@ -1,0 +1,26 @@
+experiment_name: cnn_x2_baseline
+
+data:
+  root: ./data
+  scale: 2
+  patch_size: 128
+  batch_size: 16
+  num_workers: 4
+
+model:
+  name: cnn
+  in_channels: 1
+  base_channels: 64
+  upscale: 2
+
+train:
+  epochs: 20
+  lr: 1e-4
+  weight_decay: 1e-5
+
+eval:
+  save_images: true
+  num_visualizations: 16
+
+output:
+  dir: ./outputs/cnn_x2_baseline
