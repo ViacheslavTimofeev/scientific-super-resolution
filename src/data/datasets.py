@@ -1,63 +1,25 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal
 
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
-from torchvision.transforms.functional import to_tensor
 
 from src.data.transforms import (
     SampleTransform,
     build_paired_image_transform,
     build_synthetic_hr_transform,
+    to_tensor,
 )
-
-
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
-
-
-def _is_image_file(path: Path) -> bool:
-    return path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-
-
-def _list_image_files(directory: Path) -> list[Path]:
-    if not directory.exists():
-        raise FileNotFoundError(f"Directory does not exist: {directory}")
-
-    files = sorted(path for path in directory.iterdir() if _is_image_file(path))
-    if not files:
-        raise FileNotFoundError(f"No image files found in: {directory}")
-    return files
-
-
-def _to_tensor(image: Image.Image) -> Tensor:
-    return to_tensor(image)
-
-
-def _match_lr_to_hr_name(lr_name: str, scale: int) -> str:
-    suffix = f"x{scale}"
-    if lr_name.endswith(suffix):
-        return lr_name[: -len(suffix)]
-    return lr_name
-
-
-def _build_hr_index(hr_paths: Sequence[Path]) -> dict[str, Path]:
-    index: dict[str, Path] = {}
-    for path in hr_paths:
-        index[path.stem] = path
-    return index
-
-
-@dataclass(frozen=True)
-class SuperResolutionSample:
-    lr: Tensor
-    hr: Tensor
-    image_id: str
-    lr_path: str
-    hr_path: str
+from src.data.validation import (
+    build_paired_samples,
+    list_image_files,
+    validate_crop_multiple,
+    validate_paired_image_size,
+    validate_patch_size,
+)
 
 
 class PairedSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
@@ -96,45 +58,18 @@ class PairedSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
         self.crop_multiple = crop_multiple
         self.sample_transform = sample_transform
 
-        if self.patch_size is not None and self.patch_size % self.scale != 0:
-            raise ValueError(
-                f"patch_size={patch_size} must be divisible by scale={scale}."
-            )
+        validate_patch_size(patch_size=self.patch_size, scale=self.scale)
+        validate_crop_multiple(
+            patch_size=self.patch_size,
+            scale=self.scale,
+            crop_multiple=self.crop_multiple,
+        )
 
-        if self.crop_multiple is not None:
-            lr_patch = None if self.patch_size is None else self.patch_size // self.scale
-            if lr_patch is not None and lr_patch % self.crop_multiple != 0:
-                raise ValueError(
-                    "For transformer-style training, LR patch size must be divisible "
-                    f"by crop_multiple={self.crop_multiple}. "
-                    f"Got LR patch size {lr_patch}."
-                )
-
-        self.lr_paths = _list_image_files(self.lr_dir)
-        hr_index = _build_hr_index(_list_image_files(self.hr_dir))
-
-        self.samples: list[tuple[Path, Path, str]] = []
-        missing_hr: list[str] = []
-
-        for lr_path in self.lr_paths:
-            image_id = _match_lr_to_hr_name(lr_path.stem, self.scale)
-            hr_path = hr_index.get(image_id)
-            if hr_path is None:
-                missing_hr.append(lr_path.name)
-                continue
-            self.samples.append((lr_path, hr_path, image_id))
-
-        if missing_hr:
-            preview = ", ".join(missing_hr[:5])
-            raise FileNotFoundError(
-                "Could not find matching HR images for LR files: "
-                f"{preview}"
-            )
-
-        if not self.samples:
-            raise FileNotFoundError(
-                f"No LR/HR pairs found in {self.lr_dir} and {self.hr_dir}."
-            )
+        self.lr_paths, self.samples = build_paired_samples(
+            lr_dir=self.lr_dir,
+            hr_dir=self.hr_dir,
+            scale=self.scale,
+        )
 
         self.image_transform = build_paired_image_transform(
             scale=self.scale,
@@ -155,8 +90,8 @@ class PairedSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
         hr_image = Image.open(hr_path).convert(self.image_mode)
 
         lr_image, hr_image = self._prepare_pair(lr_image, hr_image)
-        lr_tensor = _to_tensor(lr_image)
-        hr_tensor = _to_tensor(hr_image)
+        lr_tensor = to_tensor(lr_image)
+        hr_tensor = to_tensor(hr_image)
 
         sample: dict[str, Tensor | str] = {
             "lr": lr_tensor,
@@ -176,15 +111,11 @@ class PairedSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
         lr_image: Image.Image,
         hr_image: Image.Image,
     ) -> tuple[Image.Image, Image.Image]:
-        lr_width, lr_height = lr_image.size
-        hr_width, hr_height = hr_image.size
-
-        expected_hr_size = (lr_width * self.scale, lr_height * self.scale)
-        if (hr_width, hr_height) != expected_hr_size:
-            raise ValueError(
-                f"Size mismatch for paired sample: LR={lr_image.size}, "
-                f"HR={hr_image.size}, expected HR={expected_hr_size}."
-            )
+        validate_paired_image_size(
+            lr_image=lr_image,
+            hr_image=hr_image,
+            scale=self.scale,
+        )
 
         if self.patch_size is not None:
             return self.image_transform(lr_image, hr_image)
@@ -230,21 +161,14 @@ class SyntheticSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
         self.downsample_resample = downsample_resample
         self.sample_transform = sample_transform
 
-        if self.patch_size is not None and self.patch_size % self.scale != 0:
-            raise ValueError(
-                f"patch_size={patch_size} must be divisible by scale={scale}."
-            )
+        validate_patch_size(patch_size=self.patch_size, scale=self.scale)
+        validate_crop_multiple(
+            patch_size=self.patch_size,
+            scale=self.scale,
+            crop_multiple=self.crop_multiple,
+        )
 
-        if self.crop_multiple is not None:
-            lr_patch = None if self.patch_size is None else self.patch_size // self.scale
-            if lr_patch is not None and lr_patch % self.crop_multiple != 0:
-                raise ValueError(
-                    "For transformer-style training, LR patch size must be divisible "
-                    f"by crop_multiple={self.crop_multiple}. "
-                    f"Got LR patch size {lr_patch}."
-                )
-
-        self.hr_paths = _list_image_files(self.hr_dir)
+        self.hr_paths = list_image_files(self.hr_dir)
         self.hr_transform = build_synthetic_hr_transform(
             scale=self.scale,
             patch_size=self.patch_size,
@@ -265,8 +189,8 @@ class SyntheticSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
         lr_size = (hr_image.width // self.scale, hr_image.height // self.scale)
         lr_image = hr_image.resize(lr_size, resample=self.downsample_resample)
 
-        lr_tensor = _to_tensor(lr_image)
-        hr_tensor = _to_tensor(hr_image)
+        lr_tensor = to_tensor(lr_image)
+        hr_tensor = to_tensor(hr_image)
 
         sample: dict[str, Tensor | str] = {
             "lr": lr_tensor,

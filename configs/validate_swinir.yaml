@@ -1,0 +1,46 @@
+experiment_name: swinir_x2_validation
+seed: 42
+device: cuda
+
+data:
+  scale: 2
+  image_mode: L
+  dataset:
+    lr_dir: ./data/processed/valid/LR/x2
+    hr_dir: ./data/processed/valid/HR
+    batch_size: 1
+    shuffle: false
+    num_workers: 2
+    pin_memory: true
+
+model:
+  kind: swinir
+  in_chans: 1
+  img_size: 64
+  patch_size: 1
+  embed_dim: 60
+  depths: [6, 6, 6, 6]
+  num_heads: [6, 6, 6, 6]
+  window_size: 8
+  mlp_ratio: 2.0
+  qkv_bias: true
+  drop_rate: 0.0
+  attn_drop_rate: 0.0
+  drop_path_rate: 0.1
+  patch_norm: true
+  use_checkpoint: false
+  upscale: 2
+  img_range: 1.0
+  upsampler: pixelshuffledirect
+  resi_connection: 1conv
+  checkpoint_path: ./outputs/swinir_x2_baseline/checkpoints/best.pt
+
+eval:
+  metric_names: [psnr, ssim]
+  save_images: true
+  num_visualizations: 16
+
+output:
+  dir: ./outputs/swinir_x2_validation
+  metrics_filename: metrics.json
+  predictions_dir: ./outputs/swinir_x2_validation/predictions

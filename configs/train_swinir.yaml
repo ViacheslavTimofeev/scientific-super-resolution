@@ -1,0 +1,75 @@
+experiment_name: swinir_x2_baseline
+seed: 42
+device: cuda
+
+data:
+  scale: 2
+  image_mode: L
+  patch_size: 128
+  random_flip: true
+  random_rotate: true
+  train:
+    lr_dir: ./data/processed/train/LR/x2
+    hr_dir: ./data/processed/train/HR
+    batch_size: 8
+    shuffle: true
+    num_workers: 4
+    pin_memory: true
+  valid:
+    lr_dir: ./data/processed/valid/LR/x2
+    hr_dir: ./data/processed/valid/HR
+    batch_size: 1
+    shuffle: false
+    num_workers: 2
+    pin_memory: true
+
+model:
+  kind: swinir
+  in_chans: 1
+  img_size: 64
+  patch_size: 1
+  embed_dim: 60
+  depths: [6, 6, 6, 6]
+  num_heads: [6, 6, 6, 6]
+  window_size: 8
+  mlp_ratio: 2.0
+  qkv_bias: true
+  drop_rate: 0.0
+  attn_drop_rate: 0.0
+  drop_path_rate: 0.1
+  patch_norm: true
+  use_checkpoint: false
+  upscale: 2
+  img_range: 1.0
+  upsampler: pixelshuffledirect
+  resi_connection: 1conv
+
+train:
+  epochs: 200
+  optimizer:
+    name: adamw
+    lr: 2.0e-4
+    weight_decay: 1.0e-4
+    betas: [0.9, 0.99]
+  scheduler:
+    name: cosine_annealing
+    t_max: 200
+    eta_min: 1.0e-6
+  loss:
+    name: l1
+  amp: true
+  grad_clip_norm: 1.0
+  log_every: 50
+  validate_every: 1
+  save_best_metric: psnr
+
+eval:
+  metric_names: [psnr, ssim]
+  save_images: true
+  num_visualizations: 16
+
+output:
+  dir: ./outputs/swinir_x2_baseline
+  checkpoint_dir: ./outputs/swinir_x2_baseline/checkpoints
+  best_checkpoint_name: best.pt
+  last_checkpoint_name: last.pt

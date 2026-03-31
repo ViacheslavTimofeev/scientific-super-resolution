@@ -1,0 +1,33 @@
+experiment_name: cnn_x2_validation
+seed: 42
+device: cuda
+
+data:
+  scale: 2
+  image_mode: L
+  dataset:
+    lr_dir: ./data/processed/valid/LR/x2
+    hr_dir: ./data/processed/valid/HR
+    batch_size: 1
+    shuffle: false
+    num_workers: 2
+    pin_memory: true
+
+model:
+  kind: cnn
+  in_channels: 1
+  out_channels: 1
+  feature_channels: 52
+  upscale: 2
+  act: relu
+  checkpoint_path: ./outputs/cnn_x2_baseline/checkpoints/best.pt
+
+eval:
+  metric_names: [psnr, ssim]
+  save_images: true
+  num_visualizations: 16
+
+output:
+  dir: ./outputs/cnn_x2_validation
+  metrics_filename: metrics.json
+  predictions_dir: ./outputs/cnn_x2_validation/predictions

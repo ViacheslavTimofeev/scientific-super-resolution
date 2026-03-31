@@ -15,9 +15,9 @@ class ESA(nn.Module):
         super().__init__()
 
         self.conv1 = nn.Conv2d(n_feats, esa_channels, kernel_size=1)
-        self.conv_f = nn.Conv2d(esa_channels, esa_channels, kernel_size=1)
         self.conv2 = nn.Conv2d(esa_channels, esa_channels, kernel_size=3, stride=2)
         self.conv3 = nn.Conv2d(esa_channels, esa_channels, kernel_size=3, padding=1, padding_mode='reflect')
+        self.conv_f = nn.Conv2d(esa_channels, esa_channels, kernel_size=1)
         self.conv4 = nn.Conv2d(esa_channels, n_feats, kernel_size=1)
         self.sigmoid = nn.Sigmoid()
 
@@ -38,12 +38,7 @@ class RLFB(nn.Module):
     Residual Local Feature Block (RLFB).
     """
 
-    def __init__(self,
-                 in_channels,
-                 mid_channels=None,
-                 out_channels=None,
-                 esa_channels=16,
-                 act='relu'):
+    def __init__(self, in_channels, mid_channels=None, out_channels=None, esa_channels=16, act='relu'):
         super().__init__()
         
         if mid_channels is None:
@@ -90,12 +85,7 @@ class RLFN(nn.Module):
     Efficient Super-Resolution`
     """
 
-    def __init__(self,
-                 in_channels=3,
-                 out_channels=3,
-                 feature_channels=52,
-                 upscale=2,
-                 act='relu'):
+    def __init__(self, in_channels=3, out_channels=3, feature_channels=52, upscale=2, act='relu'):
         super().__init__()
 
         self.conv_1 = nn.Conv2d(in_channels, feature_channels, kernel_size=3, padding=1, padding_mode='reflect')
