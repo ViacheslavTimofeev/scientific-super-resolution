@@ -9,15 +9,15 @@ data:
   random_flip: true
   random_rotate: true
   train:
-    lr_dir: ./data/processed/train/LR/x2
-    hr_dir: ./data/processed/train/HR
+    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_LR_default_X2
+    hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_HR
     batch_size: 16
     shuffle: true
     num_workers: 4
     pin_memory: true
   valid:
-    lr_dir: ./data/processed/valid/LR/x2
-    hr_dir: ./data/processed/valid/HR
+    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_LR_default_X2
+    hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_HR
     batch_size: 1
     shuffle: false
     num_workers: 2
