@@ -12,7 +12,7 @@ from src.data.datasets import (
 )
 
 
-def build_dataloader(
+def _build_dataloader(
     dataset: PairedSuperResolutionDataset | SyntheticSuperResolutionDataset,
     loader_cfg: Mapping[str, Any] | None = None,
 ) -> DataLoader:
@@ -53,7 +53,7 @@ def build_paired_dataloader(
         random_rotate=random_rotate,
         window_size=window_size,
     )
-    return build_dataloader(dataset, loader_cfg)
+    return _build_dataloader(dataset, loader_cfg)
 
 
 def build_synthetic_dataloader(
@@ -78,7 +78,7 @@ def build_synthetic_dataloader(
         random_rotate=random_rotate,
         crop_multiple=crop_multiple,
     )
-    return build_dataloader(dataset, loader_cfg)
+    return _build_dataloader(dataset, loader_cfg)
 
 
 def build_train_dataloaders(config: Mapping[str, Any]) -> tuple[DataLoader, DataLoader]:

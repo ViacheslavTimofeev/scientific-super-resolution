@@ -15,7 +15,7 @@ from src.eval.metrics import compute_metrics
 Batch = Mapping[str, Tensor | str]
 
 
-def _resolve_device(
+def resolve_device(
     device: str | torch.device | None,
     config: Mapping[str, Any] | None,
 ) -> torch.device:
@@ -121,7 +121,7 @@ def train_one_epoch(
     - `train.log_every`
     - `eval.metric_names`
     """
-    resolved_device = _resolve_device(device, config)
+    resolved_device = resolve_device(device, config)
     train_cfg = _get_train_cfg(config)
     eval_cfg = _get_eval_cfg(config)
     metric_names = tuple(eval_cfg.get("metric_names", ("psnr", "ssim")))
@@ -204,7 +204,7 @@ def validate_one_epoch(
     epoch: int | None = None,
 ) -> dict[str, float]:
     """Run a single validation epoch using the same config conventions as training."""
-    resolved_device = _resolve_device(device, config)
+    resolved_device = resolve_device(device, config)
     train_cfg = _get_train_cfg(config)
     eval_cfg = _get_eval_cfg(config)
     metric_names = tuple(eval_cfg.get("metric_names", ("psnr", "ssim")))

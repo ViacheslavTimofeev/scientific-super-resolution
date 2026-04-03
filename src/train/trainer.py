@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import argparse
 import random
 from collections.abc import Mapping
 from pathlib import Path
@@ -16,10 +14,11 @@ from torch.optim.lr_scheduler import (
     ReduceLROnPlateau,
     StepLR,
 )
+from torch.utils.tensorboard import SummaryWriter
 
 from src.data.dataloaders import build_train_dataloaders
 from src.models.factory import build_model
-from src.train.loops import _resolve_device, train_one_epoch, validate_one_epoch
+from src.train.loops import resolve_device, train_one_epoch, validate_one_epoch
 from src.train.losses import build_loss
 
 
@@ -154,8 +153,24 @@ def _save_checkpoint(checkpoint: Mapping[str, Any], path: Path) -> None:
     torch.save(dict(checkpoint), path)
 
 
+def _prepare_tensorboard_writer(
+    config: Mapping[str, Any],
+) -> tuple[SummaryWriter, Path]:
+    output_cfg = dict(config.get("output", {}))
+    output_dir = Path(output_cfg.get("dir", "./outputs"))
+    experiment_name = str(config.get("experiment_name", "experiment"))
+    log_dir = output_dir / "tensorboard" / experiment_name
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    writer = SummaryWriter(log_dir=str(log_dir))
+    config_yaml = yaml.safe_dump(dict(config), sort_keys=False, allow_unicode=True)
+    writer.add_text("config/yaml", f"```yaml\n{config_yaml}\n```")
+
+    return writer, log_dir
+
+
 def train(config: Mapping[str, Any]) -> dict[str, Any]:
-    resolved_device = _resolve_device(device=None, config=config)
+    resolved_device = resolve_device(device=None, config=config)
     train_cfg = dict(config.get("train", {}))
     model_cfg = dict(config.get("model", {}))
     loss_cfg = train_cfg.get("loss")
@@ -179,100 +194,114 @@ def train(config: Mapping[str, Any]) -> dict[str, Any]:
     save_best_metric = str(train_cfg.get("save_best_metric", "psnr"))
 
     checkpoint_dir, best_checkpoint_path, last_checkpoint_path = _prepare_output_paths(config)
+    writer, tensorboard_log_dir = _prepare_tensorboard_writer(config)
     print(f"Saving checkpoints to: {checkpoint_dir}")
+    print(f"Writing TensorBoard logs to: {tensorboard_log_dir}")
 
     best_metric_value: float | None = None
     history: list[dict[str, Any]] = []
 
-    for epoch in range(1, epochs + 1):
-        train_stats = train_one_epoch(
-            model,
-            train_loader,
-            optimizer,
-            loss_fn,
-            device=resolved_device,
-            config=config,
-            scaler=scaler,
-            epoch=epoch,
-        )
-
-        valid_stats: dict[str, float] | None = None
-        if validate_every > 0 and epoch % validate_every == 0:
-            valid_stats = validate_one_epoch(
+    try:
+        for epoch in range(1, epochs + 1):
+            train_stats = train_one_epoch(
                 model,
-                valid_loader,
+                train_loader,
+                optimizer,
                 loss_fn,
                 device=resolved_device,
                 config=config,
+                scaler=scaler,
                 epoch=epoch,
             )
 
-        if scheduler is not None:
-            if isinstance(scheduler, ReduceLROnPlateau):
-                metric_source = valid_stats if valid_stats is not None else train_stats
-                if save_best_metric not in metric_source:
-                    available = ", ".join(sorted(metric_source))
-                    raise KeyError(
-                        f"Metric '{save_best_metric}' is not available for scheduler step. "
-                        f"Available metrics: {available}."
-                    )
-                scheduler.step(metric_source[save_best_metric])
-            else:
-                scheduler.step()
+            valid_stats: dict[str, float] | None = None
+            if validate_every > 0 and epoch % validate_every == 0:
+                valid_stats = validate_one_epoch(
+                    model,
+                    valid_loader,
+                    loss_fn,
+                    device=resolved_device,
+                    config=config,
+                    epoch=epoch,
+                )
 
-        metric_source = valid_stats if valid_stats is not None else train_stats
-        if save_best_metric not in metric_source:
-            available = ", ".join(sorted(metric_source))
-            raise KeyError(
-                f"Metric '{save_best_metric}' is not available for checkpoint selection. "
-                f"Available metrics: {available}."
+            if scheduler is not None:
+                if isinstance(scheduler, ReduceLROnPlateau):
+                    metric_source = valid_stats if valid_stats is not None else train_stats
+                    if save_best_metric not in metric_source:
+                        available = ", ".join(sorted(metric_source))
+                        raise KeyError(
+                            f"Metric '{save_best_metric}' is not available for scheduler step. "
+                            f"Available metrics: {available}."
+                        )
+                    scheduler.step(metric_source[save_best_metric])
+                else:
+                    scheduler.step()
+
+            metric_source = valid_stats if valid_stats is not None else train_stats
+            if save_best_metric not in metric_source:
+                available = ", ".join(sorted(metric_source))
+                raise KeyError(
+                    f"Metric '{save_best_metric}' is not available for checkpoint selection. "
+                    f"Available metrics: {available}."
+                )
+
+            current_metric_value = metric_source[save_best_metric]
+            is_best = _is_better_metric(
+                current_metric_value,
+                best_metric_value,
+                metric_name=save_best_metric,
             )
+            if is_best:
+                best_metric_value = current_metric_value
 
-        current_metric_value = metric_source[save_best_metric]
-        is_best = _is_better_metric(
-            current_metric_value,
-            best_metric_value,
-            metric_name=save_best_metric,
-        )
-        if is_best:
-            best_metric_value = current_metric_value
+            current_lr = float(optimizer.param_groups[0]["lr"])
+            epoch_record = {
+                "epoch": epoch,
+                "lr": current_lr,
+                "train": dict(train_stats),
+                "valid": dict(valid_stats) if valid_stats is not None else None,
+            }
+            history.append(epoch_record)
 
-        current_lr = float(optimizer.param_groups[0]["lr"])
-        epoch_record = {
-            "epoch": epoch,
-            "lr": current_lr,
-            "train": dict(train_stats),
-            "valid": dict(valid_stats) if valid_stats is not None else None,
-        }
-        history.append(epoch_record)
+            writer.add_scalar("train/lr", current_lr, epoch)
+            for name, value in train_stats.items():
+                writer.add_scalar(f"train/{name}", value, epoch)
+            if valid_stats is not None:
+                for name, value in valid_stats.items():
+                    writer.add_scalar(f"valid/{name}", value, epoch)
+            writer.add_scalar(f"best/{save_best_metric}", float(best_metric_value), epoch)
+            writer.flush()
 
-        summary = [f"Epoch {epoch}/{epochs}", f"lr={current_lr:.6g}"]
-        summary.extend(f"train_{name}={value:.4f}" for name, value in train_stats.items())
-        if valid_stats is not None:
-            summary.extend(f"valid_{name}={value:.4f}" for name, value in valid_stats.items())
-        summary.append(f"{save_best_metric}={current_metric_value:.4f}")
-        print(" | ".join(summary))
+            summary = [f"Epoch {epoch}/{epochs}", f"lr={current_lr:.6g}"]
+            summary.extend(f"train_{name}={value:.4f}" for name, value in train_stats.items())
+            if valid_stats is not None:
+                summary.extend(f"valid_{name}={value:.4f}" for name, value in valid_stats.items())
+            summary.append(f"{save_best_metric}={current_metric_value:.4f}")
+            print(" | ".join(summary))
 
-        checkpoint = _make_checkpoint(
-            model=model,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            scaler=scaler,
-            config=config,
-            epoch=epoch,
-            train_stats=train_stats,
-            valid_stats=valid_stats,
-            best_metric_name=save_best_metric,
-            best_metric_value=best_metric_value,
-        )
-        _save_checkpoint(checkpoint, last_checkpoint_path)
-
-        if is_best:
-            _save_checkpoint(checkpoint, best_checkpoint_path)
-            print(
-                f"Saved best checkpoint at epoch {epoch}: "
-                f"{save_best_metric}={best_metric_value:.4f}"
+            checkpoint = _make_checkpoint(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                config=config,
+                epoch=epoch,
+                train_stats=train_stats,
+                valid_stats=valid_stats,
+                best_metric_name=save_best_metric,
+                best_metric_value=best_metric_value,
             )
+            _save_checkpoint(checkpoint, last_checkpoint_path)
+
+            if is_best:
+                _save_checkpoint(checkpoint, best_checkpoint_path)
+                print(
+                    f"Saved best checkpoint at epoch {epoch}: "
+                    f"{save_best_metric}={best_metric_value:.4f}"
+                )
+    finally:
+        writer.close()
 
     return {
         "best_metric_name": save_best_metric,
@@ -280,26 +309,5 @@ def train(config: Mapping[str, Any]) -> dict[str, Any]:
         "history": history,
         "best_checkpoint_path": str(best_checkpoint_path),
         "last_checkpoint_path": str(last_checkpoint_path),
+        "tensorboard_log_dir": str(tensorboard_log_dir),
     }
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train a super-resolution model.")
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Path to the YAML training config.",
-    )
-    return parser.parse_args()
-
-
-def main() -> int:
-    args = parse_args()
-    config = load_config(args.config)
-    train(config)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import random
 
 from PIL import Image
@@ -83,31 +84,32 @@ def _apply_shared_augmentations(
     return first, second
 
 
-def build_paired_image_transform(
-    *,
-    scale: int,
-    patch_size: int | None,
-    random_crop: bool,
-    random_flip: bool,
-    random_rotate: bool,
-    crop_multiple: int | None,
-) -> PairedImageTransform:
-    def _transform(
+@dataclass(slots=True)
+class PairedImageTransformConfig:
+    scale: int
+    patch_size: int | None
+    random_crop: bool
+    random_flip: bool
+    random_rotate: bool
+    crop_multiple: int | None
+
+    def __call__(
+        self,
         lr_image: Image.Image,
         hr_image: Image.Image,
     ) -> tuple[Image.Image, Image.Image]:
         lr_width, lr_height = lr_image.size
 
-        if patch_size is not None:
-            hr_patch = patch_size
-            lr_patch = hr_patch // scale
+        if self.patch_size is not None:
+            hr_patch = self.patch_size
+            lr_patch = hr_patch // self.scale
 
             if lr_patch > lr_width or lr_patch > lr_height:
                 raise ValueError(
                     f"LR patch size {lr_patch} is larger than LR image size {lr_image.size}."
                 )
 
-            if random_crop:
+            if self.random_crop:
                 left = random.randint(0, lr_width - lr_patch)
                 top = random.randint(0, lr_height - lr_patch)
             else:
@@ -116,18 +118,18 @@ def build_paired_image_transform(
             lr_image = lr_image.crop((left, top, left + lr_patch, top + lr_patch))
             hr_image = hr_image.crop(
                 (
-                    left * scale,
-                    top * scale,
-                    (left + lr_patch) * scale,
-                    (top + lr_patch) * scale,
+                    left * self.scale,
+                    top * self.scale,
+                    (left + lr_patch) * self.scale,
+                    (top + lr_patch) * self.scale,
                 )
             )
-        elif crop_multiple is not None:
+        elif self.crop_multiple is not None:
             aligned_lr_size = _aligned_crop_size(
                 width=lr_width,
                 height=lr_height,
                 scale=1,
-                extra_multiple=crop_multiple,
+                extra_multiple=self.crop_multiple,
             )
             left, top, right, bottom = _center_crop_box(
                 lr_width,
@@ -137,46 +139,44 @@ def build_paired_image_transform(
             lr_image = lr_image.crop((left, top, right, bottom))
             hr_image = hr_image.crop(
                 (
-                    left * scale,
-                    top * scale,
-                    right * scale,
-                    bottom * scale,
+                    left * self.scale,
+                    top * self.scale,
+                    right * self.scale,
+                    bottom * self.scale,
                 )
             )
 
         return _apply_shared_augmentations(
             lr_image,
             hr_image,
-            random_flip=random_flip,
-            random_rotate=random_rotate,
+            random_flip=self.random_flip,
+            random_rotate=self.random_rotate,
         )
 
-    return _transform
 
+@dataclass(slots=True)
+class SyntheticHRTransformConfig:
+    scale: int
+    patch_size: int | None
+    random_crop: bool
+    random_flip: bool
+    random_rotate: bool
+    crop_multiple: int | None
 
-def build_synthetic_hr_transform(
-    *,
-    scale: int,
-    patch_size: int | None,
-    random_crop: bool,
-    random_flip: bool,
-    random_rotate: bool,
-    crop_multiple: int | None,
-) -> HRImageTransform:
-    def _transform(hr_image: Image.Image) -> Image.Image:
+    def __call__(self, hr_image: Image.Image) -> Image.Image:
         width, height = hr_image.size
 
-        if patch_size is not None:
-            crop_size = patch_size
+        if self.patch_size is not None:
+            crop_size = self.patch_size
         else:
             crop_size = _aligned_crop_size(
                 width=width,
                 height=height,
-                scale=scale,
-                extra_multiple=crop_multiple,
+                scale=self.scale,
+                extra_multiple=self.crop_multiple,
             )
 
-        if random_crop and crop_size < min(width, height):
+        if self.random_crop and crop_size < min(width, height):
             max_left = width - crop_size
             max_top = height - crop_size
             left = random.randint(0, max_left)
@@ -189,9 +189,45 @@ def build_synthetic_hr_transform(
         hr_image, _ = _apply_shared_augmentations(
             hr_image,
             hr_image.copy(),
-            random_flip=random_flip,
-            random_rotate=random_rotate,
+            random_flip=self.random_flip,
+            random_rotate=self.random_rotate,
         )
         return hr_image
 
-    return _transform
+
+def build_paired_image_transform(
+    *,
+    scale: int,
+    patch_size: int | None,
+    random_crop: bool,
+    random_flip: bool,
+    random_rotate: bool,
+    crop_multiple: int | None,
+) -> PairedImageTransform:
+    return PairedImageTransformConfig(
+        scale=scale,
+        patch_size=patch_size,
+        random_crop=random_crop,
+        random_flip=random_flip,
+        random_rotate=random_rotate,
+        crop_multiple=crop_multiple,
+    )
+
+
+def build_synthetic_hr_transform(
+    *,
+    scale: int,
+    patch_size: int | None,
+    random_crop: bool,
+    random_flip: bool,
+    random_rotate: bool,
+    crop_multiple: int | None,
+) -> HRImageTransform:
+    return SyntheticHRTransformConfig(
+        scale=scale,
+        patch_size=patch_size,
+        random_crop=random_crop,
+        random_flip=random_flip,
+        random_rotate=random_rotate,
+        crop_multiple=crop_multiple,
+    )

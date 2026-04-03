@@ -35,3 +35,6 @@ Thumbs.db
 
 # Images
 DeepRockSR-2D/
+
+# logs
+outputs/*/tensorboard/
