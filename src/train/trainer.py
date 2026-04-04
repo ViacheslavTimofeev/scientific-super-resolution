@@ -12,7 +12,6 @@ from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
     LRScheduler,
     ReduceLROnPlateau,
-    StepLR,
 )
 from torch.utils.tensorboard import SummaryWriter
 
@@ -70,18 +69,16 @@ def build_scheduler(
         key: value for key, value in scheduler_cfg.items() if key != "name"
     }
 
-    if scheduler_name == "step_lr":
-        return StepLR(optimizer, **scheduler_kwargs)
     if scheduler_name == "cosine_annealing":
         return CosineAnnealingLR(optimizer, **scheduler_kwargs)
     if scheduler_name == "reduce_on_plateau":
-        return ReduceLROnPlateau(optimizer, **scheduler_kwargs)
-    if scheduler_name in {"", "none"}:
+        return ReduceLROnPlateau(optimizer, **scheduler_kwargs, factor=0.5)
+    if scheduler_name == "none":
         return None
 
     raise ValueError(
         "Unknown scheduler "
-        f"'{scheduler_name}'. Available schedulers: step_lr, cosine_annealing, reduce_on_plateau."
+        f"'{scheduler_name}'. Available schedulers: cosine_annealing, reduce_on_plateau, none."
     )
 
 

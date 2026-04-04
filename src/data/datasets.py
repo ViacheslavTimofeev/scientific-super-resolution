@@ -10,12 +10,10 @@ from torch.utils.data import Dataset
 from src.data.transforms import (
     SampleTransform,
     build_paired_image_transform,
-    build_synthetic_hr_transform,
     to_tensor,
 )
 from src.data.validation import (
     build_paired_samples,
-    list_image_files,
     validate_crop_multiple,
     validate_paired_image_size,
     validate_patch_size,
@@ -124,89 +122,6 @@ class PairedSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
             return self.image_transform(lr_image, hr_image)
 
         return self.image_transform(lr_image, hr_image)
-
-
-class SyntheticSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
-    """
-    SR dataset that starts from HR images and synthesizes LR on the fly.
-
-    Useful when the project later wants a unified pipeline for arbitrary
-    downsampling policies instead of only pre-generated LR folders.
-    """
-
-    def __init__(
-        self,
-        hr_dir: str | Path,
-        *,
-        scale: int,
-        split: Literal["train", "valid", "test"] = "train",
-        patch_size: int | None = None,
-        image_mode: Literal["L", "RGB"] = "L",
-        random_crop: bool | None = None,
-        random_flip: bool = False,
-        random_rotate: bool = False,
-        crop_multiple: int | None = None,
-        downsample_resample: int = Image.Resampling.BICUBIC,
-        sample_transform: SampleTransform | None = None,
-    ) -> None:
-        self.hr_dir = Path(hr_dir)
-        self.scale = scale
-        self.split = split
-        self.patch_size = patch_size
-        self.image_mode = image_mode
-        self.random_crop = split == "train" if random_crop is None else random_crop
-        self.random_flip = random_flip
-        self.random_rotate = random_rotate
-        self.crop_multiple = crop_multiple
-        self.downsample_resample = downsample_resample
-        self.sample_transform = sample_transform
-
-        validate_patch_size(patch_size=self.patch_size, scale=self.scale)
-        validate_crop_multiple(
-            patch_size=self.patch_size,
-            scale=self.scale,
-            crop_multiple=self.crop_multiple,
-        )
-
-        self.hr_paths = list_image_files(self.hr_dir)
-        self.hr_transform = build_synthetic_hr_transform(
-            scale=self.scale,
-            patch_size=self.patch_size,
-            random_crop=self.random_crop,
-            random_flip=self.random_flip,
-            random_rotate=self.random_rotate,
-            crop_multiple=self.crop_multiple,
-        )
-
-    def __len__(self) -> int:
-        return len(self.hr_paths)
-
-    def __getitem__(self, index: int) -> dict[str, Tensor | str]:
-        hr_path = self.hr_paths[index]
-        hr_image = Image.open(hr_path).convert(self.image_mode)
-        hr_image = self._prepare_hr_image(hr_image)
-
-        lr_size = (hr_image.width // self.scale, hr_image.height // self.scale)
-        lr_image = hr_image.resize(lr_size, resample=self.downsample_resample)
-
-        lr_tensor = to_tensor(lr_image)
-        hr_tensor = to_tensor(hr_image)
-
-        sample: dict[str, Tensor | str] = {
-            "lr": lr_tensor,
-            "hr": hr_tensor,
-            "image_id": hr_path.stem,
-            "lr_path": "",
-            "hr_path": str(hr_path),
-        }
-
-        if self.sample_transform is not None:
-            sample = self.sample_transform(sample)
-
-        return sample
-
-    def _prepare_hr_image(self, hr_image: Image.Image) -> Image.Image:
-        return self.hr_transform(hr_image)
 
 
 def build_paired_sr_dataset(

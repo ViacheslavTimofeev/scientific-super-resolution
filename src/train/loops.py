@@ -118,7 +118,6 @@ def train_one_epoch(
     - `device`
     - `train.amp`
     - `train.grad_clip_norm`
-    - `train.log_every`
     - `eval.metric_names`
     """
     resolved_device = resolve_device(device, config)
@@ -127,8 +126,6 @@ def train_one_epoch(
     metric_names = tuple(eval_cfg.get("metric_names", ("psnr", "ssim")))
     use_amp = bool(train_cfg.get("amp", False)) and resolved_device.type == "cuda"
     grad_clip_norm = train_cfg.get("grad_clip_norm")
-    log_every = int(train_cfg.get("log_every", 0) or 0)
-
     if scaler is None:
         scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
@@ -176,16 +173,6 @@ def train_one_epoch(
         _merge_metric_sums(metric_sums, batch_metrics, batch_size=batch_size)
         num_samples += batch_size
 
-        if log_every > 0 and step % log_every == 0:
-            prefix = f"[Epoch {epoch}] " if epoch is not None else ""
-            metrics_text = ", ".join(
-                f"{name}={batch_metrics[name]:.4f}" for name in metric_names
-            )
-            print(
-                f"{prefix}train step {step}/{len(dataloader)}: "
-                f"loss={loss.detach().item():.4f}, {metrics_text}"
-            )
-
     return _finalize_epoch_stats(
         total_loss=total_loss,
         metric_sums=metric_sums,
@@ -209,8 +196,6 @@ def validate_one_epoch(
     eval_cfg = _get_eval_cfg(config)
     metric_names = tuple(eval_cfg.get("metric_names", ("psnr", "ssim")))
     use_amp = bool(train_cfg.get("amp", False)) and resolved_device.type == "cuda"
-    log_every = int(train_cfg.get("log_every", 0) or 0)
-
     model.eval()
     model.to(resolved_device)
     loss_fn.to(resolved_device)
@@ -243,16 +228,6 @@ def validate_one_epoch(
         total_loss += float(loss.detach().item()) * batch_size
         _merge_metric_sums(metric_sums, batch_metrics, batch_size=batch_size)
         num_samples += batch_size
-
-        if log_every > 0 and step % log_every == 0:
-            prefix = f"[Epoch {epoch}] " if epoch is not None else ""
-            metrics_text = ", ".join(
-                f"{name}={batch_metrics[name]:.4f}" for name in metric_names
-            )
-            print(
-                f"{prefix}valid step {step}/{len(dataloader)}: "
-                f"loss={loss.detach().item():.4f}, {metrics_text}"
-            )
 
     return _finalize_epoch_stats(
         total_loss=total_loss,

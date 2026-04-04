@@ -12,7 +12,6 @@ from torchvision.transforms.functional import to_tensor as tv_to_tensor
 Sample = dict[str, Tensor | str]
 SampleTransform = Callable[[Sample], Sample]
 PairedImageTransform = Callable[[Image.Image, Image.Image], tuple[Image.Image, Image.Image]]
-HRImageTransform = Callable[[Image.Image], Image.Image]
 
 
 def compose_sample_transforms(*transforms: SampleTransform | None) -> SampleTransform | None:
@@ -154,47 +153,6 @@ class PairedImageTransformConfig:
         )
 
 
-@dataclass(slots=True)
-class SyntheticHRTransformConfig:
-    scale: int
-    patch_size: int | None
-    random_crop: bool
-    random_flip: bool
-    random_rotate: bool
-    crop_multiple: int | None
-
-    def __call__(self, hr_image: Image.Image) -> Image.Image:
-        width, height = hr_image.size
-
-        if self.patch_size is not None:
-            crop_size = self.patch_size
-        else:
-            crop_size = _aligned_crop_size(
-                width=width,
-                height=height,
-                scale=self.scale,
-                extra_multiple=self.crop_multiple,
-            )
-
-        if self.random_crop and crop_size < min(width, height):
-            max_left = width - crop_size
-            max_top = height - crop_size
-            left = random.randint(0, max_left)
-            top = random.randint(0, max_top)
-            box = (left, top, left + crop_size, top + crop_size)
-        else:
-            box = _center_crop_box(width, height, crop_size)
-
-        hr_image = hr_image.crop(box)
-        hr_image, _ = _apply_shared_augmentations(
-            hr_image,
-            hr_image.copy(),
-            random_flip=self.random_flip,
-            random_rotate=self.random_rotate,
-        )
-        return hr_image
-
-
 def build_paired_image_transform(
     *,
     scale: int,
@@ -205,25 +163,6 @@ def build_paired_image_transform(
     crop_multiple: int | None,
 ) -> PairedImageTransform:
     return PairedImageTransformConfig(
-        scale=scale,
-        patch_size=patch_size,
-        random_crop=random_crop,
-        random_flip=random_flip,
-        random_rotate=random_rotate,
-        crop_multiple=crop_multiple,
-    )
-
-
-def build_synthetic_hr_transform(
-    *,
-    scale: int,
-    patch_size: int | None,
-    random_crop: bool,
-    random_flip: bool,
-    random_rotate: bool,
-    crop_multiple: int | None,
-) -> HRImageTransform:
-    return SyntheticHRTransformConfig(
         scale=scale,
         patch_size=patch_size,
         random_crop=random_crop,

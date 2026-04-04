@@ -7,13 +7,12 @@ from torch.utils.data import DataLoader
 
 from src.data.datasets import (
     PairedSuperResolutionDataset,
-    SyntheticSuperResolutionDataset,
     build_paired_sr_dataset,
 )
 
 
 def _build_dataloader(
-    dataset: PairedSuperResolutionDataset | SyntheticSuperResolutionDataset,
+    dataset: PairedSuperResolutionDataset,
     loader_cfg: Mapping[str, Any] | None = None,
 ) -> DataLoader:
     loader_cfg = dict(loader_cfg or {})
@@ -52,31 +51,6 @@ def build_paired_dataloader(
         random_flip=random_flip,
         random_rotate=random_rotate,
         window_size=window_size,
-    )
-    return _build_dataloader(dataset, loader_cfg)
-
-
-def build_synthetic_dataloader(
-    *,
-    hr_dir: str,
-    scale: int,
-    split: str = "train",
-    patch_size: int | None = None,
-    image_mode: str = "L",
-    random_flip: bool = False,
-    random_rotate: bool = False,
-    crop_multiple: int | None = None,
-    loader_cfg: Mapping[str, Any] | None = None,
-) -> DataLoader:
-    dataset = SyntheticSuperResolutionDataset(
-        hr_dir=hr_dir,
-        scale=scale,
-        split=split,
-        patch_size=patch_size,
-        image_mode=image_mode,
-        random_flip=random_flip,
-        random_rotate=random_rotate,
-        crop_multiple=crop_multiple,
     )
     return _build_dataloader(dataset, loader_cfg)
 

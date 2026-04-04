@@ -59,7 +59,6 @@ train:
     name: l1
   amp: true
   grad_clip_norm: 1.0
-  log_every: 50
   validate_every: 1
   save_best_metric: psnr
 
