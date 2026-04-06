@@ -1,0 +1,21 @@
+{
+  "checkpoint_path": "outputs\\cnn_x2_baseline\\checkpoints\\best.pt",
+  "device": "cuda",
+  "dtype": "float32",
+  "input_shape": [
+    1,
+    1,
+    512,
+    512
+  ],
+  "warmup_iters": 10,
+  "benchmark_iters": 100,
+  "latency_ms": {
+    "mean": 28.25510000344366,
+    "median": 28.228400042280555,
+    "min": 27.98889996483922,
+    "max": 29.653700068593025,
+    "std": 0.22868400218889626
+  },
+  "throughput_fps": 35.39184076071656
+}

@@ -1,0 +1,19 @@
+experiment_name: swinir_x2_latency  # [любая строка], str, имя benchmark-запуска
+device: cuda  # [cpu, cuda, cuda:0], str, устройство по умолчанию для benchmark
+
+model:
+  kind: swinir  # [cnn, swinir, bicubic], str, тип модели
+  in_channels: 1  # [1, 3], int, число входных каналов
+  out_channels: 1  # [1, 3], int, число выходных каналов
+  feature_channels: 52  # [32, 52, 64], int, ширина CNN-блоков
+  upscale: 2  # [2, 3, 4], int, апскейл модели
+  act: relu  # [relu, gelu, prelu], str, активация в CNN
+
+benchmark:
+  checkpoint_path: ./outputs/cnn_x4_baseline/checkpoints/best.pt  # [путь к файлу], str, путь до checkpoint для benchmark
+  input_shape: [1, 1, 512, 512]  # [[batch, channels, height, width]], list[int], форма synthetic input для latency benchmark
+  device: cuda  # [cpu, cuda, cuda:0], str, устройство для benchmark, если нужно переопределить глобальное
+  dtype: float32  # [float32, fp32, float16, fp16], str, тип входного тензора для benchmark
+  warmup_iters: 10  # [любое целое >= 0], int, число warmup-итераций перед замером
+  benchmark_iters: 100  # [любое целое > 0], int, число итераций для расчета latency
+  save_results_path: ./outputs/benchmarks/cnn_x4_latency.json  # [путь к файлу], str, куда сохранить benchmark summary в JSON

@@ -1,26 +1,26 @@
-experiment_name: cnn_x2_baseline  # [любая строка], str, имя эксперимента
+experiment_name: cnn_x4_baseline  # [любая строка], str, имя эксперимента
 seed: 42  # [любое целое], int, seed для воспроизводимости
 device: cuda  # [cpu, cuda, cuda:0], str, устройство для обучения
 
 data:
-  scale: 2  # [2, 3, 4], int, коэффициент увеличения SR
+  scale: 4  # [2, 3, 4], int, коэффициент увеличения SR
   image_mode: L  # [L, RGB], str, режим загрузки изображений
-  patch_size: 128  # [любое целое >= scale], int, размер HR-патча
+  patch_size: 256  # [любое целое >= scale], int, размер HR-патча
   random_flip: true  # [true, false], bool, включает случайные отражения
   random_rotate: true  # [true, false], bool, включает случайные повороты
   train:
-    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_LR_default_X2  # [путь к папке], str, директория LR train
+    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_LR_default_X4  # [путь к папке], str, директория LR train
     hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_HR  # [путь к папке], str, директория HR train
-    batch_size: 16  # [любое целое > 0], int, размер train batch
+    batch_size: 64  # [любое целое > 0], int, размер train batch
     shuffle: true  # [true, false], bool, перемешивает train-данные
     num_workers: 8  # [0, 2, 4, 8...], int, число worker-процессов DataLoader
     pin_memory: true  # [true, false], bool, ускоряет копирование в CUDA
   valid:
-    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_LR_default_X2  # [путь к папке], str, директория LR valid
+    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_LR_default_X4  # [путь к папке], str, директория LR valid
     hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_HR  # [путь к папке], str, директория HR valid
     batch_size: 1  # [любое целое > 0], int, размер valid batch
     shuffle: false  # [true, false], bool, перемешивает valid-данные
-    num_workers: 2  # [0, 2, 4], int, число worker-процессов DataLoader
+    num_workers: 8  # [0, 2, 4], int, число worker-процессов DataLoader
     pin_memory: true  # [true, false], bool, ускоряет копирование в CUDA
 
 model:
@@ -28,7 +28,7 @@ model:
   in_channels: 1  # [1, 3], int, число входных каналов
   out_channels: 1  # [1, 3], int, число выходных каналов
   feature_channels: 52  # [32, 52, 64], int, ширина CNN-блоков
-  upscale: 2  # [2, 3, 4], int, апскейл модели
+  upscale: 4  # [2, 3, 4], int, апскейл модели
   act: relu  # [relu, gelu, prelu], str, активация в CNN
 
 train:
@@ -53,7 +53,7 @@ eval:
   num_visualizations: 16  # [любое целое > 0], int, число изображений для viz
 
 output:
-  dir: ./outputs/cnn_x2_baseline  # [путь к папке], str, корневая папка результатов
-  checkpoint_dir: ./outputs/cnn_x2_baseline/checkpoints  # [путь к папке], str, папка checkpoint-ов
+  dir: ./outputs/cnn_x4_baseline  # [путь к папке], str, корневая папка результатов
+  checkpoint_dir: ./outputs/cnn_x4_baseline/checkpoints  # [путь к папке], str, папка checkpoint-ов
   best_checkpoint_name: best.pt  # [имя файла], str, имя best checkpoint
   last_checkpoint_name: last.pt  # [имя файла], str, имя last checkpoint

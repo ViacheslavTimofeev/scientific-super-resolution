@@ -1,74 +1,74 @@
-experiment_name: swinir_x2_baseline
-seed: 42
-device: cuda
+experiment_name: swinir_x2_baseline  # [любая строка], str, имя эксперимента
+seed: 42  # [любое целое], int, seed для воспроизводимости
+device: cuda  # [cpu, cuda, cuda:0], str, устройство для обучения
 
 data:
-  scale: 2
-  image_mode: L
-  patch_size: 128
-  random_flip: true
-  random_rotate: true
+  scale: 2  # [2, 3, 4], int, коэффициент увеличения SR
+  image_mode: L  # [L, RGB], str, режим загрузки изображений
+  patch_size: 128  # [любое целое >= scale], int, размер HR-патча
+  random_flip: true  # [true, false], bool, включает случайные отражения
+  random_rotate: true  # [true, false], bool, включает случайные повороты
   train:
-    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_LR_default_X2
-    hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_HR
-    batch_size: 8
-    shuffle: true
-    num_workers: 4
-    pin_memory: true
+    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_LR_default_X2  # [путь к папке], str, директория LR train
+    hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_train_HR  # [путь к папке], str, директория HR train
+    batch_size: 8  # [любое целое > 0], int, размер train batch
+    shuffle: true  # [true, false], bool, перемешивает train-данные
+    num_workers: 4  # [0, 2, 4, 8...], int, число worker-процессов DataLoader
+    pin_memory: true  # [true, false], bool, ускоряет копирование в CUDA
   valid:
-    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_LR_default_X2
-    hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_HR
-    batch_size: 1
-    shuffle: false
-    num_workers: 2
-    pin_memory: true
+    lr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_LR_default_X2  # [путь к папке], str, директория LR valid
+    hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_HR  # [путь к папке], str, директория HR valid
+    batch_size: 1  # [любое целое > 0], int, размер valid batch
+    shuffle: false  # [true, false], bool, перемешивает valid-данные
+    num_workers: 2  # [0, 2, 4], int, число worker-процессов DataLoader
+    pin_memory: true  # [true, false], bool, ускоряет копирование в CUDA
 
 model:
-  kind: swinir
-  in_chans: 1
-  img_size: 64
-  patch_size: 1
-  embed_dim: 60
-  depths: [6, 6, 6, 6]
-  num_heads: [6, 6, 6, 6]
-  window_size: 8
-  mlp_ratio: 2.0
-  qkv_bias: true
-  drop_rate: 0.0
-  attn_drop_rate: 0.0
-  drop_path_rate: 0.1
-  patch_norm: true
-  use_checkpoint: false
-  upscale: 2
-  img_range: 1.0
-  upsampler: pixelshuffledirect
-  resi_connection: 1conv
+  kind: swinir  # [swinir], str, тип модели
+  in_chans: 1  # [1, 3], int, число входных каналов
+  img_size: 64  # [любое целое > 0], int, базовый размер изображения для SwinIR
+  patch_size: 1  # [любое целое > 0], int, размер патча для embedding
+  embed_dim: 60  # [любое целое > 0], int, размерность embedding
+  depths: [6, 6, 6, 6]  # [[...]], list[int], число блоков в каждом уровне
+  num_heads: [6, 6, 6, 6]  # [[...]], list[int], число attention-heads по уровням
+  window_size: 8  # [любое целое > 0], int, размер окна attention
+  mlp_ratio: 2.0  # [любое float > 0], float, коэффициент расширения MLP
+  qkv_bias: true  # [true, false], bool, добавляет bias в QKV-проекции
+  drop_rate: 0.0  # [любое float >= 0], float, dropout после линейных слоев
+  attn_drop_rate: 0.0  # [любое float >= 0], float, dropout attention-весов
+  drop_path_rate: 0.1  # [любое float >= 0], float, stochastic depth rate
+  patch_norm: true  # [true, false], bool, включает нормализацию patch embedding
+  use_checkpoint: false  # [true, false], bool, включает gradient checkpointing
+  upscale: 2  # [2, 3, 4, 8], int, апскейл модели
+  img_range: 1.0  # [любое float > 0], float, диапазон значений изображения
+  upsampler: pixelshuffledirect  # [pixelshuffle, pixelshuffledirect, nearest+conv, ''], str, тип upsampler
+  resi_connection: 1conv  # [1conv, 3conv], str, тип residual connection
 
 train:
-  epochs: 200
+  epochs: 200  # [любое целое > 0], int, число эпох
   optimizer:
-    name: adamw
-    lr: 2.0e-4
-    weight_decay: 1.0e-4
-    betas: [0.9, 0.99]
+    name: adamw  # [adamw], str, оптимизатор
+    lr: 2.0e-4  # [любое float > 0], float, learning rate
+    weight_decay: 1.0e-4  # [любое float >= 0], float, weight decay
+    betas: [0.9, 0.99]  # [[b1, b2]], list[float], beta-параметры AdamW
   scheduler:
-    name: cosine_annealing
-    t_max: 200
-    eta_min: 1.0e-6
+    name: cosine_annealing  # [cosine_annealing, reduce_on_plateau, none], str, scheduler LR
+    t_max: 200  # [любое целое > 0], int, период cosine annealing
+    eta_min: 1.0e-6  # [любое float >= 0], float, минимальный learning rate
   loss:
-    name: l1
-  amp: true
-  grad_clip_norm: 1.0
-  validate_every: 1
-  save_best_metric: psnr
+    name: l1  # [l1, mse], str, функция потерь
+  amp: true  # [true, false], bool, mixed precision на CUDA
+  grad_clip_norm: 1.0  # [null, любое float > 0], float|null, clipping градиентов
+  validate_every: 1  # [0, любое целое > 0], int, частота валидации по эпохам
+  save_best_metric: psnr  # [loss, psnr, ssim], str, метрика выбора best checkpoint
 
 eval:
-  metric_names: [psnr, ssim]
-  save_images: true
-  num_visualizations: 16
+  metric_names: [psnr, ssim]  # [[psnr, ssim]], list[str], метрики для evaluation
+  save_images: true  # [true, false], bool, включает сохранение визуализаций
+  num_visualizations: 16  # [любое целое > 0], int, число изображений для viz
 
 output:
-  dir: ./outputs/swinir_x2_baseline
-  checkpoint_dir: ./outputs/swinir_x2_baseline/checkpoints
-  best_checkpoint_name: best.pt
-  last_checkpoint_name: last.pt
+  dir: ./outputs/swinir_x2_baseline  # [путь к папке], str, корневая папка результатов
+  checkpoint_dir: ./outputs/swinir_x2_baseline/checkpoints  # [путь к папке], str, папка checkpoint-ов
+  best_checkpoint_name: best.pt  # [имя файла], str, имя best checkpoint
+  last_checkpoint_name: last.pt  # [имя файла], str, имя last checkpoint
