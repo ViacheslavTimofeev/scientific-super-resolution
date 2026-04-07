@@ -9,7 +9,7 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from src.eval.metrics import compute_metrics
+from src.eval.metrics import align_image_channels, compute_metrics
 
 
 Batch = Mapping[str, Tensor | str]
@@ -150,6 +150,7 @@ def train_one_epoch(
 
         with _build_autocast_context(device=resolved_device, enabled=use_amp):
             prediction = model(lr)
+            prediction, hr = align_image_channels(prediction, hr)
             loss = loss_fn(prediction, hr)
 
         scaler.scale(loss).backward()
@@ -215,6 +216,7 @@ def validate_one_epoch(
 
         with _build_autocast_context(device=resolved_device, enabled=use_amp):
             prediction = model(lr)
+            prediction, hr = align_image_channels(prediction, hr)
             loss = loss_fn(prediction, hr)
 
         detached_prediction = prediction.detach().float().clamp_(0.0, 1.0)

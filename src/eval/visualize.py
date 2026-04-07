@@ -11,7 +11,7 @@ from torch import Tensor, nn
 
 from src.data.dataloaders import build_eval_dataloader
 from src.eval.evaluate import load_model_and_checkpoint
-from src.eval.metrics import compute_metrics
+from src.eval.metrics import align_image_channels, compute_metrics
 from src.models.factory import build_model
 
 
@@ -200,6 +200,8 @@ def visualize_comparison_grid(
         bicubic_prediction = bicubic_model(lr_batch).detach().float().clamp_(0.0, 1.0)
         current_prediction = current_model(lr_batch).detach().float().clamp_(0.0, 1.0)
         target = hr_batch.detach().float()
+        bicubic_prediction, target = align_image_channels(bicubic_prediction, target)
+        current_prediction, target = align_image_channels(current_prediction, target)
 
         bicubic_metrics = compute_metrics(
             bicubic_prediction,

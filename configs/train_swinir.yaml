@@ -20,17 +20,17 @@ data:
     hr_dir: ./DeepRockSR-2D/shuffled2D/shuffled2D_valid_HR  # [путь к папке], str, директория HR valid
     batch_size: 1  # [любое целое > 0], int, размер valid batch
     shuffle: false  # [true, false], bool, перемешивает valid-данные
-    num_workers: 2  # [0, 2, 4], int, число worker-процессов DataLoader
+    num_workers: 8  # [0, 2, 4], int, число worker-процессов DataLoader
     pin_memory: true  # [true, false], bool, ускоряет копирование в CUDA
 
-model:
+model: # Параметры обучения для pretrain weights SwinIR. Название с репозитория: 001_classicalSR_DF2K_s64w8_SwinIR-M_x2(x4).pth
   kind: swinir  # [swinir], str, тип модели
-  in_chans: 1  # [1, 3], int, число входных каналов
+  in_chans: 3  # [1, 3], int, число входных каналов
   img_size: 64  # [любое целое > 0], int, базовый размер изображения для SwinIR
   patch_size: 1  # [любое целое > 0], int, размер патча для embedding
-  embed_dim: 60  # [любое целое > 0], int, размерность embedding
-  depths: [6, 6, 6, 6]  # [[...]], list[int], число блоков в каждом уровне
-  num_heads: [6, 6, 6, 6]  # [[...]], list[int], число attention-heads по уровням
+  embed_dim: 180  # [любое целое > 0], int, размерность embedding
+  depths: [6, 6, 6, 6, 6, 6]  # [[...]], list[int], число блоков в каждом уровне
+  num_heads: [6, 6, 6, 6, 6, 6]  # [[...]], list[int], число attention-heads по уровням
   window_size: 8  # [любое целое > 0], int, размер окна attention
   mlp_ratio: 2.0  # [любое float > 0], float, коэффициент расширения MLP
   qkv_bias: true  # [true, false], bool, добавляет bias в QKV-проекции
@@ -41,7 +41,7 @@ model:
   use_checkpoint: false  # [true, false], bool, включает gradient checkpointing
   upscale: 2  # [2, 3, 4, 8], int, апскейл модели
   img_range: 1.0  # [любое float > 0], float, диапазон значений изображения
-  upsampler: pixelshuffledirect  # [pixelshuffle, pixelshuffledirect, nearest+conv, ''], str, тип upsampler
+  upsampler: pixelshuffle  # [pixelshuffle, pixelshuffledirect, nearest+conv, ''], str, тип upsampler
   resi_connection: 1conv  # [1conv, 3conv], str, тип residual connection
 
 train:
@@ -56,7 +56,7 @@ train:
     t_max: 200  # [любое целое > 0], int, период cosine annealing
     eta_min: 1.0e-6  # [любое float >= 0], float, минимальный learning rate
   loss:
-    name: l1  # [l1, mse], str, функция потерь
+    name: mse  # [l1, mse], str, функция потерь
   amp: true  # [true, false], bool, mixed precision на CUDA
   grad_clip_norm: 1.0  # [null, любое float > 0], float|null, clipping градиентов
   validate_every: 1  # [0, любое целое > 0], int, частота валидации по эпохам
@@ -70,5 +70,5 @@ eval:
 output:
   dir: ./outputs/swinir_x2_baseline  # [путь к папке], str, корневая папка результатов
   checkpoint_dir: ./outputs/swinir_x2_baseline/checkpoints  # [путь к папке], str, папка checkpoint-ов
-  best_checkpoint_name: best.pt  # [имя файла], str, имя best checkpoint
-  last_checkpoint_name: last.pt  # [имя файла], str, имя last checkpoint
+  best_checkpoint_name: best.pth  # [имя файла], str, имя best checkpoint
+  last_checkpoint_name: last.pth  # [имя файла], str, имя last checkpoint

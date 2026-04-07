@@ -31,6 +31,27 @@ def _load_checkpoint(checkpoint_path: str | Path) -> dict[str, Any]:
     return checkpoint
 
 
+def _extract_state_dict(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+    candidate_keys = ("model_state_dict", "params_ema", "params", "state_dict")
+
+    for key in candidate_keys:
+        value = checkpoint.get(key)
+        if isinstance(value, Mapping):
+            state_dict = dict(value)
+            break
+    else:
+        state_dict = dict(checkpoint)
+
+    if state_dict and all(isinstance(name, str) for name in state_dict):
+        if all(name.startswith("module.") for name in state_dict):
+            state_dict = {
+                name.removeprefix("module."): tensor
+                for name, tensor in state_dict.items()
+            }
+
+    return state_dict
+
+
 def _prepare_model(
     model: nn.Module,
     *,
@@ -40,7 +61,7 @@ def _prepare_model(
 ) -> tuple[nn.Module, dict[str, Any], torch.device]:
     resolved_device = resolve_device(device, config)
     checkpoint = _load_checkpoint(checkpoint_path)
-    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    state_dict = _extract_state_dict(checkpoint)
     if not isinstance(state_dict, Mapping):
         raise KeyError(
             "Checkpoint must contain 'model_state_dict' or be a raw state dict mapping."

@@ -9,7 +9,7 @@ import torch
 from torch import Tensor, nn
 
 from src.data.dataloaders import build_eval_dataloader
-from src.eval.metrics import compute_metrics
+from src.eval.metrics import align_image_channels, compute_metrics
 from src.models.factory import build_model
 from src.train.losses import build_loss
 from src.train.loops import resolve_device
@@ -42,6 +42,28 @@ def _load_checkpoint(checkpoint_path: Path) -> dict[str, Any]:
     return checkpoint
 
 
+def _extract_state_dict(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+    candidate_keys = ("model_state_dict", "params_ema", "params", "state_dict")
+
+    for key in candidate_keys:
+        value = checkpoint.get(key)
+        if isinstance(value, Mapping):
+            state_dict = dict(value)
+            break
+    else:
+        state_dict = dict(checkpoint)
+
+    # Handle checkpoints saved from DataParallel/DistributedDataParallel wrappers.
+    if state_dict and all(isinstance(name, str) for name in state_dict):
+        if all(name.startswith("module.") for name in state_dict):
+            state_dict = {
+                name.removeprefix("module."): tensor
+                for name, tensor in state_dict.items()
+            }
+
+    return state_dict
+
+
 def _build_model_from_config(config: Mapping[str, Any]) -> nn.Module:
     model_cfg = dict(config.get("model", {}))
     if "kind" not in model_cfg:
@@ -63,7 +85,7 @@ def load_model_and_checkpoint(
 
     model = _build_model_from_config(config)
 
-    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    state_dict = _extract_state_dict(checkpoint)
     if not isinstance(state_dict, Mapping):
         raise KeyError(
             "Checkpoint must contain 'model_state_dict' or be a raw state dict mapping."
@@ -154,6 +176,7 @@ def evaluate(
         target = hr.to(device=resolved_device, non_blocking=non_blocking)
 
         prediction = model(lr)
+        prediction, target = align_image_channels(prediction, target)
         loss = loss_fn(prediction, target)
         prediction = prediction.detach().float().clamp_(0.0, 1.0)
         target = target.detach().float()

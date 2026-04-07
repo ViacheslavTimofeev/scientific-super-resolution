@@ -13,7 +13,28 @@ from torchmetrics.functional.image import (
 MetricFn = Callable[[Tensor, Tensor], float]
 
 
+def align_image_channels(prediction: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+    if prediction.ndim != 4 or target.ndim != 4:
+        return prediction, target
+
+    prediction_channels = prediction.shape[1]
+    target_channels = target.shape[1]
+    if prediction_channels == target_channels:
+        return prediction, target
+
+    # Pretrained RGB SR models may output 3 channels even when the dataset
+    # target is grayscale. In that case we compare in luminance space.
+    if prediction_channels == 3 and target_channels == 1:
+        return prediction.mean(dim=1, keepdim=True), target
+    if prediction_channels == 1 and target_channels == 3:
+        return prediction, target.mean(dim=1, keepdim=True)
+
+    return prediction, target
+
+
 def _validate_image_tensors(prediction: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+    prediction, target = align_image_channels(prediction, target)
+
     if prediction.shape != target.shape:
         raise ValueError(
             "Prediction and target must have the same shape. "
@@ -30,7 +51,6 @@ def _validate_image_tensors(prediction: Tensor, target: Tensor) -> tuple[Tensor,
     target = target.detach().to(dtype=torch.float32, device=prediction.device)
 
     return prediction, target
-
 def psnr(
     prediction: Tensor,
     target: Tensor,
