@@ -10,46 +10,19 @@ from typing import Any
 import torch
 from torch import nn
 
-from src.train.loops import resolve_device
+from src.models.loading import (
+    extract_state_dict as extract_checkpoint_state_dict,
+    load_checkpoint as load_model_checkpoint,
+)
+from src.runtime.device import resolve_device
 
 
 def _load_checkpoint(checkpoint_path: str | Path) -> dict[str, Any]:
-    resolved_checkpoint_path = Path(checkpoint_path)
-    if not resolved_checkpoint_path.exists():
-        raise FileNotFoundError(
-            f"Checkpoint file does not exist: {resolved_checkpoint_path}"
-        )
-
-    checkpoint = torch.load(resolved_checkpoint_path, map_location="cpu")
-    if not isinstance(checkpoint, dict):
-        raise TypeError(
-            "Expected checkpoint to be a mapping. "
-            f"Got {type(checkpoint)!r} from '{resolved_checkpoint_path}'."
-        )
-
-    checkpoint["checkpoint_path"] = str(resolved_checkpoint_path)
-    return checkpoint
+    return load_model_checkpoint(checkpoint_path)
 
 
 def _extract_state_dict(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
-    candidate_keys = ("model_state_dict", "params_ema", "params", "state_dict")
-
-    for key in candidate_keys:
-        value = checkpoint.get(key)
-        if isinstance(value, Mapping):
-            state_dict = dict(value)
-            break
-    else:
-        state_dict = dict(checkpoint)
-
-    if state_dict and all(isinstance(name, str) for name in state_dict):
-        if all(name.startswith("module.") for name in state_dict):
-            state_dict = {
-                name.removeprefix("module."): tensor
-                for name, tensor in state_dict.items()
-            }
-
-    return state_dict
+    return extract_checkpoint_state_dict(checkpoint)
 
 
 def _prepare_model(

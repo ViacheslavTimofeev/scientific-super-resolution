@@ -10,32 +10,10 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from src.eval.metrics import align_image_channels, compute_metrics
+from src.runtime.device import resolve_device
 
 
 Batch = Mapping[str, Tensor | str]
-
-
-def resolve_device(
-    device: str | torch.device | None,
-    config: Mapping[str, Any] | None,
-) -> torch.device:
-    requested_device = device
-    if requested_device is None and config is not None and config.get("device") is not None:
-        requested_device = str(config["device"])
-
-    if requested_device is None:
-        raise RuntimeError(
-            "Training device is not configured. Set `device` explicitly in the call "
-            "or provide `device` in the config."
-        )
-
-    resolved_device = torch.device(requested_device)
-    if resolved_device.type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError(
-            f"CUDA device '{requested_device}' was requested, but CUDA is not available."
-        )
-
-    return resolved_device
 
 
 def _get_train_cfg(config: Mapping[str, Any] | None) -> Mapping[str, Any]:

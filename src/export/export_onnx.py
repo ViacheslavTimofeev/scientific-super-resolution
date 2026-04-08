@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from src.eval.evaluate import load_model_and_checkpoint
+from src.models.loading import load_model_and_checkpoint
 
 
 def _resolve_output_path(
@@ -116,19 +116,14 @@ def _verify_exported_model(
     dummy_input: torch.Tensor | None = None,
     pytorch_output: torch.Tensor | None = None,
 ) -> dict[str, Any]:
+    import numpy as np
+    import onnx
+    import onnxruntime as ort
+
     verification: dict[str, Any] = {
         "onnx_checker": None,
         "onnxruntime": None,
     }
-
-    try:
-        import onnx
-    except ImportError:
-        verification["onnx_checker"] = {
-            "available": False,
-            "message": "onnx is not installed, skipped structural verification.",
-        }
-        return verification
 
     loaded_model = onnx.load(str(model_path))
     onnx.checker.check_model(loaded_model)
@@ -138,16 +133,6 @@ def _verify_exported_model(
     }
 
     if dummy_input is None or pytorch_output is None:
-        return verification
-
-    try:
-        import numpy as np
-        import onnxruntime as ort
-    except ImportError:
-        verification["onnxruntime"] = {
-            "available": False,
-            "message": "onnxruntime is not installed, skipped runtime verification.",
-        }
         return verification
 
     session = ort.InferenceSession(

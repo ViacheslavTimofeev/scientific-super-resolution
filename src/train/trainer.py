@@ -17,7 +17,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from src.data.dataloaders import build_train_dataloaders
 from src.models.factory import build_model
-from src.train.loops import resolve_device, train_one_epoch, validate_one_epoch
+from src.runtime.device import resolve_device
+from src.train.loops import train_one_epoch, validate_one_epoch
 from src.train.losses import build_loss
 
 

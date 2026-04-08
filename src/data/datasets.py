@@ -6,14 +6,14 @@ from typing import Literal
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
+from torchvision.transforms.functional import to_tensor as tv_to_tensor
 
+from src.data.pairs import build_paired_samples
 from src.data.transforms import (
     SampleTransform,
     build_paired_image_transform,
-    to_tensor,
 )
 from src.data.validation import (
-    build_paired_samples,
     validate_crop_multiple,
     validate_paired_image_size,
     validate_patch_size,
@@ -88,8 +88,8 @@ class PairedSuperResolutionDataset(Dataset[dict[str, Tensor | str]]):
         hr_image = Image.open(hr_path).convert(self.image_mode)
 
         lr_image, hr_image = self._prepare_pair(lr_image, hr_image)
-        lr_tensor = to_tensor(lr_image)
-        hr_tensor = to_tensor(hr_image)
+        lr_tensor = tv_to_tensor(lr_image)
+        hr_tensor = tv_to_tensor(hr_image)
 
         sample: dict[str, Tensor | str] = {
             "lr": lr_tensor,

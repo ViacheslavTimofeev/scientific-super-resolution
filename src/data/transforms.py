@@ -6,7 +6,6 @@ import random
 
 from PIL import Image
 from torch import Tensor
-from torchvision.transforms.functional import to_tensor as tv_to_tensor
 
 
 Sample = dict[str, Tensor | str]
@@ -25,11 +24,6 @@ def compose_sample_transforms(*transforms: SampleTransform | None) -> SampleTran
         return sample
 
     return _composed
-
-
-def to_tensor(image: Image.Image) -> Tensor:
-    return tv_to_tensor(image)
-
 
 def _center_crop_box(width: int, height: int, crop_size: int) -> tuple[int, int, int, int]:
     if crop_size > width or crop_size > height:

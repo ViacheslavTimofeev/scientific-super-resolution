@@ -54,11 +54,6 @@ def parse_args() -> argparse.Namespace:
         help="Optional ONNX opset override.",
     )
     parser.add_argument(
-        "--no-verify",
-        action="store_true",
-        help="Skip optional ONNX verification.",
-    )
-    parser.add_argument(
         "--save-results",
         type=str,
         default=None,
@@ -77,7 +72,6 @@ def main() -> int:
         input_shape=args.input_shape,
         device=args.device,
         opset_version=args.opset,
-        verify_export=not args.no_verify,
         save_results_path=args.save_results,
     )
     print(json.dumps(results, indent=2, ensure_ascii=False))

@@ -10,9 +10,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from torch import Tensor, nn
 
 from src.data.dataloaders import build_eval_dataloader
-from src.eval.evaluate import load_model_and_checkpoint
 from src.eval.metrics import align_image_channels, compute_metrics
 from src.models.factory import build_model
+from src.models.loading import load_model_and_checkpoint
 
 
 def _tensor_to_pil_image(image: Tensor) -> Image.Image:
