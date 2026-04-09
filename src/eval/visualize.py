@@ -10,7 +10,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from torch import Tensor, nn
 
 from src.data.dataloaders import build_eval_dataloader
-from src.eval.metrics import align_image_channels, compute_metrics
+from src.eval.metrics import compute_metrics
+from src.eval.tensors import align_image_channels
 from src.models.factory import build_model
 from src.models.loading import load_model_and_checkpoint
 

@@ -2,62 +2,25 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import torch
 from torch import Tensor
 from torchmetrics.functional.image import (
     peak_signal_noise_ratio,
     structural_similarity_index_measure,
 )
 
+from src.data.validation import validate_image_tensors
+
 
 MetricFn = Callable[[Tensor, Tensor], float]
 
 
-def align_image_channels(prediction: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
-    if prediction.ndim != 4 or target.ndim != 4:
-        return prediction, target
-
-    prediction_channels = prediction.shape[1]
-    target_channels = target.shape[1]
-    if prediction_channels == target_channels:
-        return prediction, target
-
-    # Pretrained RGB SR models may output 3 channels even when the dataset
-    # target is grayscale. In that case we compare in luminance space.
-    if prediction_channels == 3 and target_channels == 1:
-        return prediction.mean(dim=1, keepdim=True), target
-    if prediction_channels == 1 and target_channels == 3:
-        return prediction, target.mean(dim=1, keepdim=True)
-
-    return prediction, target
-
-
-def _validate_image_tensors(prediction: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
-    prediction, target = align_image_channels(prediction, target)
-
-    if prediction.shape != target.shape:
-        raise ValueError(
-            "Prediction and target must have the same shape. "
-            f"Got {tuple(prediction.shape)} and {tuple(target.shape)}."
-        )
-
-    if prediction.ndim != 4:
-        raise ValueError(
-            "Expected image tensors in NCHW format. "
-            f"Got tensor with {prediction.ndim} dimensions."
-        )
-
-    prediction = prediction.detach().to(dtype=torch.float32)
-    target = target.detach().to(dtype=torch.float32, device=prediction.device)
-
-    return prediction, target
 def psnr(
     prediction: Tensor,
     target: Tensor,
     *,
     data_range: float = 1.0,
 ) -> float:
-    prediction, target = _validate_image_tensors(prediction, target)
+    prediction, target = validate_image_tensors(prediction, target)
     score = peak_signal_noise_ratio(prediction, target, data_range=data_range)
     return float(score.item())
 
@@ -75,7 +38,7 @@ def ssim(
     if kernel_size % 2 == 0:
         raise ValueError(f"kernel_size must be odd, got {kernel_size}.")
 
-    prediction, target = _validate_image_tensors(prediction, target)
+    prediction, target = validate_image_tensors(prediction, target)
 
     if min(prediction.shape[-2:]) < kernel_size:
         raise ValueError(

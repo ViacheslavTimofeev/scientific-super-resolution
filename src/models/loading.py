@@ -5,10 +5,21 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import yaml
 from torch import nn
 
 from src.models.factory import build_model
 from src.runtime.device import resolve_device
+
+
+def load_config(config_path: str | Path) -> dict[str, Any]:
+    with Path(config_path).open("r", encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+
+    if not isinstance(config, dict):
+        raise ValueError(f"Expected mapping config in '{config_path}', got {type(config)!r}.")
+
+    return config
 
 
 def resolve_checkpoint_path(

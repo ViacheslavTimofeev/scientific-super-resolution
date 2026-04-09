@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.export.export_onnx import export_onnx
-from src.train.trainer import load_config
+from src.models.loading import load_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,59 +21,13 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to the YAML config.",
     )
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        default=None,
-        help="Optional checkpoint path. If omitted, the best checkpoint from config is used.",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=None,
-        help="Optional ONNX output path. If omitted, export.output_path or outputs/<experiment>.onnx is used.",
-    )
-    parser.add_argument(
-        "--input-shape",
-        type=int,
-        nargs=4,
-        default=None,
-        metavar=("B", "C", "H", "W"),
-        help="Optional dummy input shape for export: batch channels height width.",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default=None,
-        help="Optional export device override.",
-    )
-    parser.add_argument(
-        "--opset",
-        type=int,
-        default=None,
-        help="Optional ONNX opset override.",
-    )
-    parser.add_argument(
-        "--save-results",
-        type=str,
-        default=None,
-        help="Optional path to save export results as JSON.",
-    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     config = load_config(args.config)
-    results = export_onnx(
-        config,
-        checkpoint_path=args.checkpoint,
-        output_path=args.output,
-        input_shape=args.input_shape,
-        device=args.device,
-        opset_version=args.opset,
-        save_results_path=args.save_results,
-    )
+    results = export_onnx(config)
     print(json.dumps(results, indent=2, ensure_ascii=False))
     return 0
 

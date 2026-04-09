@@ -22,16 +22,6 @@ from src.train.loops import train_one_epoch, validate_one_epoch
 from src.train.losses import build_loss
 
 
-def load_config(config_path: str | Path) -> dict[str, Any]:
-    with Path(config_path).open("r", encoding="utf-8") as file:
-        config = yaml.safe_load(file)
-
-    if not isinstance(config, dict):
-        raise ValueError(f"Expected mapping config in '{config_path}', got {type(config)!r}.")
-
-    return config
-
-
 def set_seed(seed: int) -> None:
     random.seed(seed)
     torch.manual_seed(seed)

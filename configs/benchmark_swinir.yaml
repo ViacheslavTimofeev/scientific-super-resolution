@@ -22,9 +22,15 @@ model:
   upsampler: pixelshuffle  # [pixelshuffle, pixelshuffledirect, nearest+conv, ''], str, тип upsampler
   resi_connection: 1conv  # [1conv, 3conv], str, тип residual connection
 
+export:
+  checkpoint_path: ./outputs/swinir_x4_baseline/checkpoints/best.pth  # [путь к файлу], str, checkpoint для ONNX export
+  dir: ./outputs  # [путь к директории], str, куда сохранить ONNX-файл
+  input_shape: [1, 3, 512, 512]  # [[batch, channels, height, width]], list[int], форма synthetic input для ONNX export
+  model_path: ./outputs/swinir_x4_latency_opset18_1x3x512x512.onnx  # [путь к файлу], str, полный путь до экспортируемой ONNX-модели
+  verify_export: true  # [true, false], bool, проверять exported ONNX через onnx/onnxruntime
+
 benchmark:
   checkpoint_path: ./outputs/swinir_x4_baseline/checkpoints/best.pth  # [путь к файлу], str, путь до checkpoint для benchmark
-  input_shape: [1, 3, 512, 512]  # [[batch, channels, height, width]], list[int], форма synthetic input для latency benchmark
   device: cuda  # [cpu, cuda, cuda:0], str, устройство для benchmark, если нужно переопределить глобальное
   dtype: float32  # [float32, fp32, float16, fp16], str, тип входного тензора для benchmark
   warmup_iters: 10  # [любое целое >= 0], int, число warmup-итераций перед замером

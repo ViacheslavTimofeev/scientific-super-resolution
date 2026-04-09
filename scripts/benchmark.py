@@ -11,8 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.benchmark.latency import measure_latency
-from src.models.factory import build_model
-from src.train.trainer import load_config
+from src.models.loading import build_model_from_config, load_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,25 +55,17 @@ def _resolve_checkpoint_path(
     return str(checkpoint_from_cfg)
 
 
-def _build_model_from_config(config: dict[str, Any]):
-    model_cfg = dict(config.get("model", {}))
-    model_kind = model_cfg.pop("kind", None)
-    if model_kind is None:
-        raise KeyError("Model config must contain 'kind'.")
-
-    return build_model(str(model_kind), **model_cfg)
-
-
 def main() -> int:
     args = parse_args()
     config = load_config(args.config)
     benchmark_cfg = dict(config.get("benchmark", {}))
+    export_cfg = dict(config.get("export", {}))
 
-    input_shape = tuple(benchmark_cfg.get("input_shape", ()))
+    input_shape = tuple(export_cfg.get("input_shape", ()))
     if not input_shape:
-        raise KeyError("Benchmark config must contain 'benchmark.input_shape'.")
+        raise KeyError("Benchmark config must contain 'export.input_shape'.")
 
-    model = _build_model_from_config(config)
+    model = build_model_from_config(config)
     checkpoint_path = _resolve_checkpoint_path(config, args.checkpoint)
     save_results_path = args.save_results or benchmark_cfg.get("save_results_path")
 

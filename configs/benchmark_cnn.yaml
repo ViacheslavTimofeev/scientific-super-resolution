@@ -9,9 +9,15 @@ model:
   upscale: 4  # [2, 3, 4], int, апскейл модели
   act: relu  # [relu, gelu, prelu], str, активация в CNN
 
+export:
+  checkpoint_path: ./outputs/cnn_x4_baseline/checkpoints/best.pt  # [путь к файлу], str, checkpoint для ONNX export
+  dir: ./outputs  # [путь к директории], str, куда сохранить ONNX-файл
+  input_shape: [1, 1, 512, 512]  # [[batch, channels, height, width]], list[int], форма synthetic input для ONNX export
+  model_path: ./outputs/cnn_x4_latency_opset18_1x1x512x512.onnx  # [путь к файлу], str, полный путь до экспортируемой ONNX-модели
+  verify_export: true  # [true, false], bool, проверять exported ONNX через onnx/onnxruntime
+
 benchmark:
   checkpoint_path: ./outputs/cnn_x4_baseline/checkpoints/best.pt  # [путь к файлу], str, путь до checkpoint для benchmark
-  input_shape: [1, 1, 512, 512]  # [[batch, channels, height, width]], list[int], форма synthetic input для latency benchmark
   device: cuda  # [cpu, cuda, cuda:0], str, устройство для benchmark, если нужно переопределить глобальное
   dtype: float32  # [float32, fp32, float16, fp16], str, тип входного тензора для benchmark
   warmup_iters: 10  # [любое целое >= 0], int, число warmup-итераций перед замером

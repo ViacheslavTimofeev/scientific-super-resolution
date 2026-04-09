@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from torch import Tensor, nn
+from torch import Tensor
 
 from src.data.dataloaders import build_eval_dataloader
-from src.eval.metrics import align_image_channels, compute_metrics
+from src.eval.metrics import compute_metrics
+from src.eval.tensors import align_image_channels
 from src.models.loading import load_model_and_checkpoint
 from src.train.losses import build_loss
 

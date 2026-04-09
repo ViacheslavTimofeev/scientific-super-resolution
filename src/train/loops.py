@@ -9,7 +9,8 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from src.eval.metrics import align_image_channels, compute_metrics
+from src.eval.metrics import compute_metrics
+from src.eval.tensors import align_image_channels
 from src.runtime.device import resolve_device
 
 

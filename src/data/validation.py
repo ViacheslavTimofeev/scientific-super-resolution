@@ -3,6 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
+import torch
+from torch import Tensor
+
+from src.eval.tensors import align_image_channels
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
@@ -36,7 +40,7 @@ def validate_crop_multiple(
     crop_multiple: int | None,
 ) -> None:
     if crop_multiple is None:
-        return
+        return None
 
     lr_patch = None if patch_size is None else patch_size // scale
     if lr_patch is not None and lr_patch % crop_multiple != 0:
@@ -45,6 +49,8 @@ def validate_crop_multiple(
             f"by crop_multiple={crop_multiple}. "
             f"Got LR patch size {lr_patch}."
         )
+
+
 def validate_paired_image_size(
     *,
     lr_image: Image.Image,
@@ -59,3 +65,24 @@ def validate_paired_image_size(
             f"Size mismatch for paired sample: LR={lr_image.size}, "
             f"HR={hr_image.size}, expected HR={expected_hr_size}."
         )
+
+
+def validate_image_tensors(prediction: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+    prediction, target = align_image_channels(prediction, target)
+
+    if prediction.shape != target.shape:
+        raise ValueError(
+            "Prediction and target must have the same shape. "
+            f"Got {tuple(prediction.shape)} and {tuple(target.shape)}."
+        )
+
+    if prediction.ndim != 4:
+        raise ValueError(
+            "Expected image tensors in NCHW format. "
+            f"Got tensor with {prediction.ndim} dimensions."
+        )
+
+    prediction = prediction.detach().to(dtype=torch.float32)
+    target = target.detach().to(dtype=torch.float32, device=prediction.device)
+
+    return prediction, target

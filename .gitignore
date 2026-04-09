@@ -32,6 +32,7 @@ Thumbs.db
 *.pth
 *.ckpt
 *.onnx
+*.onnx.data
 
 # Images
 DeepRockSR-2D/
