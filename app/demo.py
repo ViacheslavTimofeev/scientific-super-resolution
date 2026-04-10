@@ -16,85 +16,54 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.models.factory import build_model
-from src.models.loading import load_config, load_model_and_checkpoint
+from src.models.loading import extract_state_dict, load_checkpoint, load_config
 
 
-MODEL_PRESETS: dict[str, dict[str, Any]] = {
-    "CNN x2": {
-        "config": "configs/train_cnn.yaml",
-        "checkpoint": "outputs/cnn_x2_baseline/checkpoints/best.pt",
-        "overrides": {
-            "experiment_name": "cnn_x2_demo",
-            "device": "cpu",
-            "data": {
-                "scale": 2,
-            },
-            "model": {
-                "upscale": 2,
-            },
-        },
-    },
-    "CNN x4": {
-        "config": "configs/benchmark_cnn.yaml",
-        "checkpoint": "outputs/cnn_x4_baseline/checkpoints/best.pt",
-    },
-    "SwinIR x2": {
-        "config": "configs/train_swinir.yaml",
-        "checkpoint": "outputs/swinir_x2_baseline/checkpoints/best.pth",
-    },
-    "SwinIR x4": {
-        "config": "configs/benchmark_swinir.yaml",
-        "checkpoint": "outputs/swinir_x4_baseline/checkpoints/best.pth",
-    },
-}
+DEMO_CONFIG_PATH = PROJECT_ROOT / "configs" / "demo_inference.yaml"
+
+
+@lru_cache(maxsize=1)
+def _load_demo_config() -> dict[str, Any]:
+    config = load_config(DEMO_CONFIG_PATH)
+    if "app" not in config or "presets" not in config:
+        raise KeyError("Demo config must contain 'app' and 'presets' sections.")
+    return config
+
+
+def _get_app_config() -> dict[str, Any]:
+    return dict(_load_demo_config().get("app", {}))
+
+
+def _get_preset_specs() -> dict[str, dict[str, Any]]:
+    presets = _load_demo_config().get("presets", {})
+    if not isinstance(presets, dict) or not presets:
+        raise ValueError("Demo config 'presets' must be a non-empty mapping.")
+    return {str(name): dict(spec) for name, spec in presets.items()}
 
 
 def _available_presets() -> list[str]:
     available: list[str] = []
-    for preset_name, preset in MODEL_PRESETS.items():
-        config_path = PROJECT_ROOT / preset["config"]
-        checkpoint_path = PROJECT_ROOT / preset["checkpoint"]
-        if config_path.exists() and checkpoint_path.exists():
+    for preset_name, preset in _get_preset_specs().items():
+        checkpoint_path = PROJECT_ROOT / str(preset["checkpoint"])
+        if checkpoint_path.exists():
             available.append(preset_name)
     return available
 
 
 def _resolve_default_device() -> str:
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    requested = str(_get_app_config().get("default_device", "auto")).lower()
+    if requested == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return requested
 
 
-def _resolve_model_channels(model_cfg: dict[str, Any]) -> int:
+def _resolve_model_channels(preset: dict[str, Any]) -> int:
+    model_cfg = dict(preset.get("model", {}))
     if "in_channels" in model_cfg:
         return int(model_cfg["in_channels"])
     if "in_chans" in model_cfg:
         return int(model_cfg["in_chans"])
     return 1
-
-
-def _deep_update(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-    for key, value in overrides.items():
-        if isinstance(value, dict) and isinstance(base.get(key), dict):
-            _deep_update(base[key], value)
-        else:
-            base[key] = value
-    return base
-
-
-def _resolve_scale(config: dict[str, Any]) -> int:
-    data_cfg = dict(config.get("data", {}))
-    model_cfg = dict(config.get("model", {}))
-    if "scale" in data_cfg:
-        return int(data_cfg["scale"])
-    if "upscale" in model_cfg:
-        return int(model_cfg["upscale"])
-    raise KeyError("Unable to resolve scale from config.")
-
-
-def _resolve_crop_multiple(config: dict[str, Any]) -> int | None:
-    model_cfg = dict(config.get("model", {}))
-    if str(model_cfg.get("kind", "")).lower() == "swinir":
-        return int(model_cfg.get("window_size", 1))
-    return None
 
 
 def _center_crop_to_multiple(
@@ -148,20 +117,33 @@ def _load_predictor(
     preset_name: str,
     device: str,
 ) -> tuple[torch.nn.Module, dict[str, Any], torch.device]:
-    preset = MODEL_PRESETS[preset_name]
-    config_path = PROJECT_ROOT / preset["config"]
-    checkpoint_path = PROJECT_ROOT / preset["checkpoint"]
+    preset = _get_preset_specs()[preset_name]
+    checkpoint_path = PROJECT_ROOT / str(preset["checkpoint"])
+    model_cfg = dict(preset.get("model", {}))
+    model_kind = str(model_cfg.pop("kind"))
 
-    config = load_config(config_path)
-    overrides = preset.get("overrides")
-    if isinstance(overrides, dict):
-        config = _deep_update(config, overrides)
-    config["device"] = device
-    model, _, resolved_device = load_model_and_checkpoint(
-        config,
-        checkpoint_path=checkpoint_path,
-        device=device,
-    )
+    config = {
+        "device": device,
+        "data": {
+            "scale": int(preset["scale"]),
+        },
+        "model": {
+            "kind": model_kind,
+            **model_cfg,
+        },
+    }
+
+    model = build_model(model_kind, **model_cfg)
+    checkpoint = load_checkpoint(checkpoint_path)
+    state_dict = extract_state_dict(checkpoint)
+    model.load_state_dict(state_dict)
+    model.eval()
+
+    resolved_device = torch.device(device)
+    if resolved_device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested, but CUDA is not available.")
+
+    model.to(resolved_device)
     return model, config, resolved_device
 
 
@@ -174,22 +156,26 @@ def run_super_resolution(
     if image is None:
         raise gr.Error("Upload an image first.")
 
-    if preset_name not in MODEL_PRESETS:
+    preset_specs = _get_preset_specs()
+    if preset_name not in preset_specs:
         raise gr.Error(f"Unknown preset: {preset_name}")
 
+    preset = preset_specs[preset_name]
     model, config, resolved_device = _load_predictor(preset_name, device)
-    model_cfg = dict(config.get("model", {}))
 
-    channels = _resolve_model_channels(model_cfg)
-    image_mode = "RGB" if channels == 3 else "L"
+    channels = _resolve_model_channels(preset)
+    image_mode = str(preset.get("image_mode", "L"))
+    if image_mode not in {"L", "RGB"}:
+        image_mode = "RGB" if channels == 3 else "L"
+
     prepared_image = image.convert(image_mode)
     prepared_image, crop_note = _center_crop_to_multiple(
         prepared_image,
-        multiple=_resolve_crop_multiple(config),
+        multiple=preset.get("crop_multiple"),
     )
 
     input_tensor = tv_to_tensor(prepared_image).unsqueeze(0).to(resolved_device)
-    scale = _resolve_scale(config)
+    scale = int(preset["scale"])
 
     bicubic_model = build_model("bicubic", scale_factor=scale).to(resolved_device).eval()
     bicubic_prediction = bicubic_model(input_tensor)[0]
@@ -205,6 +191,7 @@ def run_super_resolution(
         f"Preset: {preset_name}",
         f"Backend: direct PyTorch inference",
         f"Device: {resolved_device}",
+        f"Model kind: {preset['model']['kind']}",
         f"Input size: {prepared_image.width}x{prepared_image.height}",
         f"Output size: {prepared_image.width * scale}x{prepared_image.height * scale}",
         f"Channels: {channels}",
@@ -216,28 +203,28 @@ def run_super_resolution(
 
 
 def build_demo() -> gr.Blocks:
+    app_cfg = _get_app_config()
     presets = _available_presets()
     if not presets:
         raise RuntimeError(
-            "No model presets are available. Expected configs in ./configs and checkpoints in ./outputs."
+            "No demo presets are available. Check checkpoint paths in configs/demo_inference.yaml."
         )
 
     default_device = _resolve_default_device()
-
-    with gr.Blocks(title="SR Demo") as demo:
-        gr.Markdown(
-            """
-            # Super-Resolution Demo
-            Upload a low-resolution image, choose a model preset, and compare LR, bicubic, and SR outputs.
-            """
+    title = str(app_cfg.get("title", "SR Demo"))
+    description = str(
+        app_cfg.get(
+            "description",
+            "Upload a low-resolution image, choose a model preset, and compare LR, bicubic, and SR outputs.",
         )
+    )
+
+    with gr.Blocks(title=title) as demo:
+        gr.Markdown(f"# {title}\n{description}")
 
         with gr.Row():
             with gr.Column():
-                image_input = gr.Image(
-                    type="pil",
-                    label="Upload LR image",
-                )
+                image_input = gr.Image(type="pil", label="Upload LR image")
                 preset_input = gr.Dropdown(
                     choices=presets,
                     value=presets[0],
@@ -258,10 +245,7 @@ def build_demo() -> gr.Blocks:
                     preview=True,
                     height="auto",
                 )
-                summary_output = gr.Textbox(
-                    label="Run summary",
-                    lines=8,
-                )
+                summary_output = gr.Textbox(label="Run summary", lines=8)
 
         run_button.click(
             fn=run_super_resolution,
@@ -273,9 +257,20 @@ def build_demo() -> gr.Blocks:
 
 
 def parse_args() -> argparse.Namespace:
+    app_cfg = _get_app_config()
+
     parser = argparse.ArgumentParser(description="Launch the super-resolution demo UI.")
-    parser.add_argument("--host", default="127.0.0.1", help="Host interface for the Gradio server.")
-    parser.add_argument("--port", default=7860, type=int, help="Port for the Gradio server.")
+    parser.add_argument(
+        "--host",
+        default=str(app_cfg.get("host", "127.0.0.1")),
+        help="Host interface for the Gradio server.",
+    )
+    parser.add_argument(
+        "--port",
+        default=int(app_cfg.get("port", 7860)),
+        type=int,
+        help="Port for the Gradio server.",
+    )
     parser.add_argument("--share", action="store_true", help="Create a public Gradio share link.")
     return parser.parse_args()
 

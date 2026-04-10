@@ -1,3 +1,6 @@
 torchmetrics
 tensorboard
 gradio
+fastapi
+python-multipart
+uvicorn

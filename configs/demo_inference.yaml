@@ -1,0 +1,85 @@
+app:
+  title: Super-Resolution Demo
+  description: Upload a low-resolution image, choose a model preset, and compare LR, bicubic, and SR outputs.
+  default_device: auto
+  host: 127.0.0.1
+  port: 7860
+
+presets:
+  CNN x2:
+    checkpoint: outputs/cnn_x2_baseline/checkpoints/best.pt
+    scale: 2
+    image_mode: L
+    crop_multiple: null
+    model:
+      kind: cnn
+      in_channels: 1
+      out_channels: 1
+      feature_channels: 52
+      upscale: 2
+      act: relu
+
+  CNN x4:
+    checkpoint: outputs/cnn_x4_baseline/checkpoints/best.pt
+    scale: 4
+    image_mode: L
+    crop_multiple: null
+    model:
+      kind: cnn
+      in_channels: 1
+      out_channels: 1
+      feature_channels: 52
+      upscale: 4
+      act: relu
+
+  SwinIR x2:
+    checkpoint: outputs/swinir_x2_baseline/checkpoints/best.pth
+    scale: 2
+    image_mode: RGB
+    crop_multiple: 8
+    model:
+      kind: swinir
+      in_chans: 3
+      img_size: 64
+      patch_size: 1
+      embed_dim: 180
+      depths: [6, 6, 6, 6, 6, 6]
+      num_heads: [6, 6, 6, 6, 6, 6]
+      window_size: 8
+      mlp_ratio: 2.0
+      qkv_bias: true
+      drop_rate: 0.0
+      attn_drop_rate: 0.0
+      drop_path_rate: 0.1
+      patch_norm: true
+      use_checkpoint: false
+      upscale: 2
+      img_range: 1.0
+      upsampler: pixelshuffle
+      resi_connection: 1conv
+
+  SwinIR x4:
+    checkpoint: outputs/swinir_x4_baseline/checkpoints/best.pth
+    scale: 4
+    image_mode: RGB
+    crop_multiple: 8
+    model:
+      kind: swinir
+      in_chans: 3
+      img_size: 64
+      patch_size: 1
+      embed_dim: 180
+      depths: [6, 6, 6, 6, 6, 6]
+      num_heads: [6, 6, 6, 6, 6, 6]
+      window_size: 8
+      mlp_ratio: 2.0
+      qkv_bias: true
+      drop_rate: 0.0
+      attn_drop_rate: 0.0
+      drop_path_rate: 0.1
+      patch_norm: true
+      use_checkpoint: false
+      upscale: 4
+      img_range: 1.0
+      upsampler: pixelshuffle
+      resi_connection: 1conv
