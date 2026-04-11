@@ -1,6 +1,11 @@
-torchmetrics
-tensorboard
-gradio
 fastapi
+gradio
+pillow
 python-multipart
+pyyaml
+tensorboard
+timm
+torch
+torchmetrics
+torchvision
 uvicorn

@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: .
+      target: api
+    container_name: sr-api
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "from urllib.request import urlopen; import sys; sys.exit(0 if urlopen('http://127.0.0.1:8000/health').status == 200 else 1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  demo:
+    build:
+      context: .
+      target: demo
+    container_name: sr-demo
+    depends_on:
+      api:
+        condition: service_healthy
+    command:
+      [
+        "python",
+        "app/demo.py",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "7860",
+        "--api-url",
+        "http://api:8000",
+      ]
+    ports:
+      - "7860:7860"
+    restart: unless-stopped

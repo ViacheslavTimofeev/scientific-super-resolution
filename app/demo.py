@@ -1,239 +1,226 @@
 from __future__ import annotations
 
 import argparse
-from functools import lru_cache
+import json
+import mimetypes
+import uuid
+from io import BytesIO
 from pathlib import Path
 import sys
 from typing import Any
+from urllib import error, parse, request
 
 import gradio as gr
-import torch
 from PIL import Image
-from torchvision.transforms.functional import to_tensor as tv_to_tensor
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.models.factory import build_model
-from src.models.loading import extract_state_dict, load_checkpoint, load_config
+from src.models.loading import load_config
 
 
 DEMO_CONFIG_PATH = PROJECT_ROOT / "configs" / "demo_inference.yaml"
 
 
-@lru_cache(maxsize=1)
 def _load_demo_config() -> dict[str, Any]:
     config = load_config(DEMO_CONFIG_PATH)
-    if "app" not in config or "presets" not in config:
-        raise KeyError("Demo config must contain 'app' and 'presets' sections.")
-    return config
+    app_cfg = dict(config.get("app", {}))
+    return {"app": app_cfg}
 
 
 def _get_app_config() -> dict[str, Any]:
     return dict(_load_demo_config().get("app", {}))
 
 
-def _get_preset_specs() -> dict[str, dict[str, Any]]:
-    presets = _load_demo_config().get("presets", {})
-    if not isinstance(presets, dict) or not presets:
-        raise ValueError("Demo config 'presets' must be a non-empty mapping.")
-    return {str(name): dict(spec) for name, spec in presets.items()}
+def _resolve_api_url(args: argparse.Namespace) -> str:
+    if args.api_url:
+        return args.api_url.rstrip("/")
+
+    app_cfg = _get_app_config()
+    api_host = str(app_cfg.get("api_host", "127.0.0.1"))
+    api_port = int(app_cfg.get("api_port", 8000))
+    return f"http://{api_host}:{api_port}"
 
 
-def _available_presets() -> list[str]:
-    available: list[str] = []
-    for preset_name, preset in _get_preset_specs().items():
-        checkpoint_path = PROJECT_ROOT / str(preset["checkpoint"])
-        if checkpoint_path.exists():
-            available.append(preset_name)
-    return available
+def _fetch_json(url: str) -> Any:
+    try:
+        with request.urlopen(url) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"API request failed with {exc.code}: {detail}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"Could not reach API at {url}: {exc.reason}") from exc
 
 
-def _resolve_default_device() -> str:
-    requested = str(_get_app_config().get("default_device", "auto")).lower()
-    if requested == "auto":
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    return requested
+def _build_multipart_form_data(image_bytes: bytes, filename: str) -> tuple[bytes, str]:
+    boundary = f"sr-demo-{uuid.uuid4().hex}"
+    mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
-
-def _resolve_model_channels(preset: dict[str, Any]) -> int:
-    model_cfg = dict(preset.get("model", {}))
-    if "in_channels" in model_cfg:
-        return int(model_cfg["in_channels"])
-    if "in_chans" in model_cfg:
-        return int(model_cfg["in_chans"])
-    return 1
-
-
-def _center_crop_to_multiple(
-    image: Image.Image,
-    *,
-    multiple: int | None,
-) -> tuple[Image.Image, str | None]:
-    if multiple is None or multiple <= 1:
-        return image, None
-
-    width, height = image.size
-    cropped_width = (width // multiple) * multiple
-    cropped_height = (height // multiple) * multiple
-
-    if cropped_width <= 0 or cropped_height <= 0:
-        raise ValueError(
-            f"Image size {(width, height)} is too small for required multiple={multiple}."
-        )
-
-    if cropped_width == width and cropped_height == height:
-        return image, None
-
-    left = (width - cropped_width) // 2
-    top = (height - cropped_height) // 2
-    cropped = image.crop((left, top, left + cropped_width, top + cropped_height))
-    note = (
-        f"Input was center-cropped from {width}x{height} to "
-        f"{cropped_width}x{cropped_height} to match model constraints."
+    body = bytearray()
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode("utf-8")
     )
-    return cropped, note
+    body.extend(image_bytes)
+    body.extend(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+
+    return bytes(body), boundary
 
 
-def _tensor_to_pil_image(image: torch.Tensor) -> Image.Image:
-    image = image.detach().float().clamp_(0.0, 1.0).cpu()
-    if image.ndim != 3:
-        raise ValueError(f"Expected CHW tensor, got shape {tuple(image.shape)}.")
+def _predict_via_api(api_url: str, image: Image.Image, preset_name: str) -> tuple[Image.Image, dict[str, str]]:
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    body, boundary = _build_multipart_form_data(buffer.getvalue(), "input.png")
+    query = parse.urlencode({"preset": preset_name})
+    predict_url = f"{api_url}/predict?{query}"
+    api_request = request.Request(
+        predict_url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
 
-    if image.shape[0] == 1:
-        array = (image.squeeze(0) * 255.0).round().to(torch.uint8).numpy()
-        return Image.fromarray(array, mode="L").convert("RGB")
+    try:
+        with request.urlopen(api_request) as response:
+            image_bytes = response.read()
+            headers = {key: value for key, value in response.headers.items()}
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Prediction failed with {exc.code}: {detail}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"Could not reach API at {predict_url}: {exc.reason}") from exc
 
-    if image.shape[0] == 3:
-        array = (image.permute(1, 2, 0) * 255.0).round().to(torch.uint8).numpy()
-        return Image.fromarray(array, mode="RGB")
-
-    raise ValueError(f"Unsupported number of channels: {image.shape[0]}.")
+    with Image.open(BytesIO(image_bytes)) as output_image:
+        return output_image.copy(), headers
 
 
-@lru_cache(maxsize=8)
-def _load_predictor(
+def _make_bicubic_preview(image: Image.Image, scale: int) -> Image.Image:
+    return image.resize(
+        (image.width * scale, image.height * scale),
+        resample=Image.Resampling.BICUBIC,
+    )
+
+
+def _normalize_input_preview(image: Image.Image, output_mode: str) -> Image.Image:
+    if output_mode in {"L", "RGB"}:
+        converted = image.convert(output_mode)
+    else:
+        converted = image.copy()
+    return converted.convert("RGB")
+
+
+def _load_presets(api_url: str) -> list[dict[str, Any]]:
+    payload = _fetch_json(f"{api_url}/presets")
+    if not isinstance(payload, list) or not payload:
+        raise RuntimeError("API returned no presets.")
+    return payload
+
+
+def _get_header(headers: dict[str, str], key: str, default: str) -> str:
+    lowered = key.lower()
+    for header_name, header_value in headers.items():
+        if header_name.lower() == lowered:
+            return header_value
+    return default
+
+
+def _format_summary(
+    *,
     preset_name: str,
-    device: str,
-) -> tuple[torch.nn.Module, dict[str, Any], torch.device]:
-    preset = _get_preset_specs()[preset_name]
-    checkpoint_path = PROJECT_ROOT / str(preset["checkpoint"])
-    model_cfg = dict(preset.get("model", {}))
-    model_kind = str(model_cfg.pop("kind"))
+    preset_info: dict[str, Any],
+    headers: dict[str, str],
+    api_url: str,
+) -> str:
+    summary_lines = [
+        f"Frontend: Gradio demo",
+        f"Backend: {api_url}",
+        f"Preset: {preset_name}",
+        f"Model kind: {_get_header(headers, 'X-SR-Model-Kind', str(preset_info.get('model_kind', 'unknown')))}",
+        f"Device: {_get_header(headers, 'X-SR-Device', str(preset_info.get('device', 'unknown')))}",
+        f"Scale: x{_get_header(headers, 'X-SR-Scale', str(preset_info.get('scale', 'unknown')))}",
+        f"Input size: {_get_header(headers, 'X-SR-Input-Size', 'unknown')}",
+        f"Output size: {_get_header(headers, 'X-SR-Output-Size', 'unknown')}",
+        f"Channels: {preset_info.get('channels', 'unknown')}",
+        f"Image mode: {preset_info.get('image_mode', 'unknown')}",
+    ]
 
-    config = {
-        "device": device,
-        "data": {
-            "scale": int(preset["scale"]),
-        },
-        "model": {
-            "kind": model_kind,
-            **model_cfg,
-        },
-    }
+    crop_note = _get_header(headers, "X-SR-Preprocess-Note", "")
+    if crop_note:
+        summary_lines.append(crop_note)
 
-    model = build_model(model_kind, **model_cfg)
-    checkpoint = load_checkpoint(checkpoint_path)
-    state_dict = extract_state_dict(checkpoint)
-    model.load_state_dict(state_dict)
-    model.eval()
-
-    resolved_device = torch.device(device)
-    if resolved_device.type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA was requested, but CUDA is not available.")
-
-    model.to(resolved_device)
-    return model, config, resolved_device
+    return "\n".join(summary_lines)
 
 
-@torch.inference_mode()
 def run_super_resolution(
     image: Image.Image | None,
     preset_name: str,
-    device: str,
+    api_url: str,
+    preset_catalog: list[dict[str, Any]],
 ) -> tuple[list[tuple[Image.Image, str]], str]:
     if image is None:
         raise gr.Error("Upload an image first.")
 
-    preset_specs = _get_preset_specs()
-    if preset_name not in preset_specs:
+    preset_info = next((item for item in preset_catalog if item["name"] == preset_name), None)
+    if preset_info is None:
         raise gr.Error(f"Unknown preset: {preset_name}")
 
-    preset = preset_specs[preset_name]
-    model, config, resolved_device = _load_predictor(preset_name, device)
+    try:
+        sr_image, headers = _predict_via_api(api_url, image, preset_name)
+    except RuntimeError as exc:
+        raise gr.Error(str(exc)) from exc
 
-    channels = _resolve_model_channels(preset)
-    image_mode = str(preset.get("image_mode", "L"))
-    if image_mode not in {"L", "RGB"}:
-        image_mode = "RGB" if channels == 3 else "L"
-
-    prepared_image = image.convert(image_mode)
-    prepared_image, crop_note = _center_crop_to_multiple(
-        prepared_image,
-        multiple=preset.get("crop_multiple"),
-    )
-
-    input_tensor = tv_to_tensor(prepared_image).unsqueeze(0).to(resolved_device)
-    scale = int(preset["scale"])
-
-    bicubic_model = build_model("bicubic", scale_factor=scale).to(resolved_device).eval()
-    bicubic_prediction = bicubic_model(input_tensor)[0]
-    sr_prediction = model(input_tensor)[0]
+    scale = int(_get_header(headers, "X-SR-Scale", str(preset_info["scale"])))
+    input_preview = _normalize_input_preview(image, str(preset_info.get("image_mode", "RGB")))
+    bicubic_preview = _make_bicubic_preview(input_preview, scale)
+    sr_preview = sr_image.convert("RGB")
 
     gallery = [
-        (_tensor_to_pil_image(input_tensor[0]), "LR input"),
-        (_tensor_to_pil_image(bicubic_prediction), f"Bicubic x{scale}"),
-        (_tensor_to_pil_image(sr_prediction), f"{preset_name} SR"),
+        (input_preview, "LR input"),
+        (bicubic_preview, f"Bicubic x{scale}"),
+        (sr_preview, f"{preset_name} SR"),
     ]
-
-    summary_lines = [
-        f"Preset: {preset_name}",
-        f"Backend: direct PyTorch inference",
-        f"Device: {resolved_device}",
-        f"Model kind: {preset['model']['kind']}",
-        f"Input size: {prepared_image.width}x{prepared_image.height}",
-        f"Output size: {prepared_image.width * scale}x{prepared_image.height * scale}",
-        f"Channels: {channels}",
-    ]
-    if crop_note is not None:
-        summary_lines.append(crop_note)
-
-    return gallery, "\n".join(summary_lines)
+    summary = _format_summary(
+        preset_name=preset_name,
+        preset_info=preset_info,
+        headers=headers,
+        api_url=api_url,
+    )
+    return gallery, summary
 
 
-def build_demo() -> gr.Blocks:
+def build_demo(api_url: str) -> gr.Blocks:
     app_cfg = _get_app_config()
-    presets = _available_presets()
-    if not presets:
-        raise RuntimeError(
-            "No demo presets are available. Check checkpoint paths in configs/demo_inference.yaml."
-        )
+    presets = _load_presets(api_url)
+    preset_names = [str(item["name"]) for item in presets]
 
-    default_device = _resolve_default_device()
     title = str(app_cfg.get("title", "SR Demo"))
     description = str(
         app_cfg.get(
             "description",
-            "Upload a low-resolution image, choose a model preset, and compare LR, bicubic, and SR outputs.",
+            "Upload a low-resolution image and compare frontend previews with backend SR inference.",
         )
     )
 
     with gr.Blocks(title=title) as demo:
         gr.Markdown(f"# {title}\n{description}")
+        gr.Markdown(f"Backend API: `{api_url}`")
+
+        preset_catalog_state = gr.State(presets)
+        api_url_state = gr.State(api_url)
 
         with gr.Row():
             with gr.Column():
                 image_input = gr.Image(type="pil", label="Upload LR image")
                 preset_input = gr.Dropdown(
-                    choices=presets,
-                    value=presets[0],
+                    choices=preset_names,
+                    value=preset_names[0],
                     label="Model preset",
-                )
-                device_input = gr.Dropdown(
-                    choices=["cpu", "cuda"],
-                    value=default_device,
-                    label="Device",
                 )
                 run_button = gr.Button("Run super-resolution", variant="primary")
 
@@ -245,11 +232,11 @@ def build_demo() -> gr.Blocks:
                     preview=True,
                     height="auto",
                 )
-                summary_output = gr.Textbox(label="Run summary", lines=8)
+                summary_output = gr.Textbox(label="Run summary", lines=10)
 
         run_button.click(
             fn=run_super_resolution,
-            inputs=[image_input, preset_input, device_input],
+            inputs=[image_input, preset_input, api_url_state, preset_catalog_state],
             outputs=[output_gallery, summary_output],
         )
 
@@ -271,13 +258,19 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="Port for the Gradio server.",
     )
+    parser.add_argument(
+        "--api-url",
+        default=str(app_cfg.get("api_url", "")),
+        help="Base URL of the inference API backend, for example http://127.0.0.1:8000.",
+    )
     parser.add_argument("--share", action="store_true", help="Create a public Gradio share link.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    demo = build_demo()
+    api_url = _resolve_api_url(args)
+    demo = build_demo(api_url)
     demo.launch(server_name=args.host, server_port=args.port, share=args.share)
     return 0
 
