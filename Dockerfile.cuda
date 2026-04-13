@@ -1,0 +1,32 @@
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+
+COPY requirements.docker.txt ./requirements.docker.txt
+
+RUN pip install --upgrade pip \
+    && pip install -r requirements.docker.txt \
+    && pip install torchvision==0.20.1
+
+COPY app ./app
+COPY configs ./configs
+COPY outputs ./outputs
+COPY scripts ./scripts
+COPY src ./src
+
+FROM base AS api
+
+EXPOSE 8000
+
+CMD ["python", "scripts/serve.py", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM base AS demo
+
+EXPOSE 7860
+
+CMD ["python", "app/demo.py", "--host", "0.0.0.0", "--port", "7860", "--api-url", "http://api:8000"]

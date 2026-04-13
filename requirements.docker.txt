@@ -1,0 +1,9 @@
+fastapi
+gradio
+pillow
+python-multipart
+pyyaml
+tensorboard
+timm
+torchmetrics
+uvicorn
